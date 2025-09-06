@@ -6,11 +6,17 @@ import requests # pyright: ignore[reportMissingModuleSource]
 import json
 import time
 from typing import Dict, List, Optional
+import pygame
+import io
+import threading
 
 class MusicStreamingClient:
     def __init__(self, server_url: str = "http://pi-server:8080"):
         self.server_url = server_url.rstrip('/')
         self.session = requests.Session()
+        pygame.mixer.init()
+        self._current_song = None
+        self._is_playing = False
     
     def health_check(self) -> bool:
         """Test server health."""
@@ -57,23 +63,57 @@ class MusicStreamingClient:
             print(f"Error getting artists: {e}")
         return []
     
-    def play_song(self, song: Dict) -> bool:
-        """Play a specific song."""
+    def stream_and_play_song(self, song: Dict) -> bool:
+        """Stream and play a specific song."""
         try:
-            response = self.session.post(
+            # First, tell server we want to play this song (for state management)
+            control_response = self.session.post(
                 f"{self.server_url}/api/play/{song['id']}",
                 json={"song": song}
             )
-            if response.status_code == 200:
-                data = response.json()
-                return data.get("success", False)
+            
+            if control_response.status_code != 200:
+                print(f"Failed to set server play state: {control_response.status_code}")
+                return False
+            
+            # Now stream the actual audio
+            stream_response = self.session.get(f"{self.server_url}/stream/{song['id']}", stream=True)
+            
+            if stream_response.status_code != 200:
+                print(f"Failed to stream audio: {stream_response.status_code}")
+                return False
+            
+            # Load audio data into pygame
+            audio_data = b''.join(stream_response.iter_content(chunk_size=8192))
+            audio_file = io.BytesIO(audio_data)
+            
+            pygame.mixer.music.load(audio_file)
+            pygame.mixer.music.play()
+            
+            self._current_song = song
+            self._is_playing = True
+            
+            print(f"   ✅ Now playing: {song.get('title', 'Unknown')} - {song.get('artist', 'Unknown')}")
+            return True
+            
         except requests.RequestException as e:
-            print(f"Error playing song: {e}")
+            print(f"Error streaming song: {e}")
+        except pygame.error as e:
+            print(f"Error playing audio: {e}")
         return False
+
+    def play_song(self, song: Dict) -> bool:
+        """Legacy method - redirects to stream_and_play_song."""
+        return self.stream_and_play_song(song)
     
     def pause(self) -> bool:
         """Pause playback."""
         try:
+            # Pause locally
+            pygame.mixer.music.pause()
+            self._is_playing = False
+            
+            # Update server state
             response = self.session.post(f"{self.server_url}/api/pause")
             return response.status_code == 200
         except requests.RequestException:
@@ -82,6 +122,11 @@ class MusicStreamingClient:
     def resume(self) -> bool:
         """Resume playback."""
         try:
+            # Resume locally
+            pygame.mixer.music.unpause()
+            self._is_playing = True
+            
+            # Update server state
             response = self.session.post(f"{self.server_url}/api/resume")
             return response.status_code == 200
         except requests.RequestException:
@@ -90,6 +135,12 @@ class MusicStreamingClient:
     def stop(self) -> bool:
         """Stop playback."""
         try:
+            # Stop locally
+            pygame.mixer.music.stop()
+            self._is_playing = False
+            self._current_song = None
+            
+            # Update server state
             response = self.session.post(f"{self.server_url}/api/stop")
             return response.status_code == 200
         except requests.RequestException:
@@ -109,6 +160,10 @@ class MusicStreamingClient:
     def set_volume(self, volume: float) -> bool:
         """Set volume (0.0 to 1.0)."""
         try:
+            # Set volume locally
+            pygame.mixer.music.set_volume(volume)
+            
+            # Update server state
             response = self.session.post(
                 f"{self.server_url}/api/volume",
                 json={"volume": volume}
