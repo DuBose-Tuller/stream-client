@@ -93,26 +93,56 @@ Runs comprehensive tests:
 - Audio streaming capabilities
 - Error handling
 
+## Current Status (January 2025)
+
+### ✅ What's Working
+- **Basic Audio Streaming**: Original test client works with all server types
+- **Gapless Playbook**: Dual-channel seamless track transitions implemented
+- **Database Integration**: SQLite database successfully created and connected
+- **Deploy Script**: Fixed hanging issues, supports all server types
+- **Three Server Options**: Original, Hybrid, and Direct file servers
+
+### 🚧 In Progress  
+- **Database Population**: Migration tool creates database but doesn't populate songs yet
+- **Metadata API**: Endpoints exist but need database population to be useful
+- **Smart Shuffle**: Implementation ready but requires song data
+
+### 📋 Next Steps
+1. Complete migration tool to populate database with music data
+2. Test all metadata features with real data  
+3. Implement advanced shuffle algorithms
+4. Add systemd service setup
+5. Create web client version
+
 ## Server Setup
 
-The clients expect a running music server. You can use either:
+The clients expect a running music server. You can use any of the three server types:
 
-### Option 1: Hybrid Server (Database + Navidrome)
+### Option 1: Hybrid Server (Recommended)
 ```bash
 cd ../server
-cargo run --bin hybrid_server
+./deploy.sh hybrid
 ```
+**Features**: Database + Navidrome integration, custom metadata, gapless playback
 
-### Option 2: Direct File Server (Database only)
+### Option 2: Direct File Server  
 ```bash
 cd ../server
-cargo run --bin direct_server
+./deploy.sh direct
 ```
+**Features**: Direct file access, transcoding, full independence from Navidrome
 
-### Option 3: Original Navidrome-only Server
+### Option 3: Original Server (Basic)
+```bash  
+cd ../server
+./deploy.sh original
+```
+**Features**: Simple Navidrome proxy, basic streaming only
+
+### Database Setup (for Hybrid/Direct)
 ```bash
 cd ../server
-cargo run --bin server
+./deploy.sh migrate    # First time only - creates and initializes database
 ```
 
 ## Gapless Playback Technical Details
