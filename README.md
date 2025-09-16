@@ -4,13 +4,6 @@ Python clients for the enhanced music streaming server with custom metadata and 
 
 ## Files
 
-### Core Clients
-
-- **`test_client.py`** - Basic test client with audio streaming and playback
-- **`gapless_client.py`** - Advanced client demonstrating gapless playback between tracks
-- **`metadata_client.py`** - Client for testing custom metadata features
-- **`test_full_system.py`** - Comprehensive system integration tests
-
 ### GUI Client
 
 - **`main.py`** - Entry point for the GUI application
@@ -70,7 +63,7 @@ python gapless_client.py
 ```
 
 Demonstrates:
-- **Seamless track transitions** with no gaps or clicks
+- **Seamless track transitions** with no gaps or clicks (this is a TODO since there is no was to play multiple tracks at once)
 - **Dual-channel audio mixing** using pygame
 - **Smart preloading** of upcoming tracks
 - **Interactive playback controls** during gapless playback
@@ -115,16 +108,11 @@ Runs comprehensive tests:
 - Audio streaming capabilities
 - Error handling
 
-## Current Status (January 2025)
-
 ### ✅ What's Working
 - **Basic Audio Streaming**: Original test client works with all server types
 - **Desktop GUI Client**: Full tkinter-based client with search, playback, and volume control
 - **Modular Architecture**: GUI client split into reusable components (api_client, audio_player, gui_client)
 - **Gapless Playbook**: Dual-channel seamless track transitions implemented
-- **Database Integration**: SQLite database successfully created and connected
-- **Deploy Script**: Fixed hanging issues, supports all server types
-- **Three Server Options**: Original, Hybrid, and Direct file servers
 
 ### 🚧 In Progress  
 - **Database Population**: Migration tool creates database but doesn't populate songs yet
@@ -190,34 +178,6 @@ The gapless client achieves seamless track transitions using:
 - Uses streaming for reduced memory usage
 - Background threads for non-blocking operation
 - Automatic cleanup of unused audio data
-
-## Custom Metadata Schema
-
-The metadata system supports rich song annotations:
-
-```json
-{
-  "song_id": "track_123",
-  "energy": 0.8,
-  "valence": 0.6, 
-  "tempo": 128,
-  "key_signature": "C major",
-  "color": "#FF6B35",
-  "mood": ["energetic", "upbeat"],
-  "tags": ["workout", "driving"],
-  "personal_rating": 8,
-  "play_count": 42,
-  "skip_count": 3,
-  "shuffle_weight": 1.2,
-  "skip_probability": 0.1
-}
-```
-
-This enables advanced features like:
-- **Smart Playlists**: "High energy songs in C major"
-- **Mood-Based Shuffle**: "Only happy songs when it's raining"
-- **Workout Optimization**: "Songs that match my running pace"
-- **Discovery**: "Songs similar to my favorites but not overplayed"
 
 ## GUI Client Architecture
 
@@ -286,8 +246,5 @@ The GUI client addresses a critical compatibility issue:
 
 ## Next Steps
 
-1. **Mobile Client**: Port gapless logic to React Native or Flutter
-2. **Web Client**: JavaScript version using Web Audio API
-3. **Advanced Shuffle**: Machine learning-based recommendation engine  
-4. **Offline Mode**: Local caching and sync capabilities
-5. **Multi-Room**: Synchronized playback across devices
+1. Playlists/queues
+2. Display album art
