@@ -11,6 +11,14 @@ Python clients for the enhanced music streaming server with custom metadata and 
 - **`metadata_client.py`** - Client for testing custom metadata features
 - **`test_full_system.py`** - Comprehensive system integration tests
 
+### GUI Client
+
+- **`main.py`** - Entry point for the GUI application
+- **`gui_client.py`** - Main tkinter GUI application class
+- **`api_client.py`** - HTTP API client for server communication
+- **`audio_player.py`** - pygame-based audio playback manager
+- **`music_gui_client.py`** - Original monolithic GUI client (reference)
+
 ### Configuration
 
 - **`requirements.txt`** - Python dependencies
@@ -40,6 +48,20 @@ Features tested:
 - Audio streaming and playback
 - Basic playback controls (play/pause/resume/stop)
 - Volume control and seeking
+
+### Desktop GUI Client
+
+```bash
+python main.py
+```
+
+Full-featured desktop music client with:
+- **Search Interface**: Real-time song search with results display
+- **Playback Controls**: Play, pause, resume, stop with visual feedback
+- **Volume Control**: Interactive volume slider
+- **Status Updates**: Connection status and playback information
+- **Modern UI**: Native macOS/Windows styling with ttk widgets
+- **Threading**: Non-blocking operations for smooth user experience
 
 ### Gapless Playback Demo
 
@@ -97,6 +119,8 @@ Runs comprehensive tests:
 
 ### ✅ What's Working
 - **Basic Audio Streaming**: Original test client works with all server types
+- **Desktop GUI Client**: Full tkinter-based client with search, playback, and volume control
+- **Modular Architecture**: GUI client split into reusable components (api_client, audio_player, gui_client)
 - **Gapless Playbook**: Dual-channel seamless track transitions implemented
 - **Database Integration**: SQLite database successfully created and connected
 - **Deploy Script**: Fixed hanging issues, supports all server types
@@ -113,6 +137,7 @@ Runs comprehensive tests:
 3. Implement advanced shuffle algorithms
 4. Add systemd service setup
 5. Create web client version
+6. Add GUI client features: playlists, queue management, lyrics display
 
 ## Server Setup
 
@@ -194,7 +219,55 @@ This enables advanced features like:
 - **Workout Optimization**: "Songs that match my running pace"
 - **Discovery**: "Songs similar to my favorites but not overplayed"
 
+## GUI Client Architecture
+
+The desktop GUI client uses a modular design for maintainability:
+
+### Components
+
+1. **`api_client.py`** - HTTP API Communication
+   - Server health checking
+   - Song search and artist retrieval
+   - Audio streaming with timeout handling
+   - Server playback state synchronization
+
+2. **`audio_player.py`** - Audio Playback
+   - pygame mixer initialization and management
+   - Play, pause, resume, stop controls
+   - Volume control and status tracking
+   - Audio data loading from bytes
+
+3. **`gui_client.py`** - User Interface
+   - tkinter/ttk-based modern GUI
+   - Search interface with results display
+   - Player controls with state management
+   - Threading for non-blocking operations
+
+4. **`main.py`** - Application Entry Point
+   - Launches the GUI application
+   - Simple, clean entry point for users
+
+### Technical Highlights
+
+- **Threading**: All network operations run in background threads to prevent UI freezing
+- **Error Handling**: Comprehensive error dialogs and connection status feedback
+- **State Management**: Proper button state updates based on player status
+- **Cross-Platform**: Uses ttk widgets for native OS appearance
+- **Memory Efficient**: Streams audio data without excessive memory usage
+
+### Requirements Fixed
+
+The GUI client addresses a critical compatibility issue:
+- **macOS Tkinter**: Upgraded from system Tk 8.5 to Tkinter 9.0 (Python 3.13)
+- **Widget Rendering**: ttk widgets now display properly with modern styling
+- **Stability**: No more blank windows or invisible UI elements
+
 ## Troubleshooting
+
+### GUI Client Issues
+- **Blank window**: Ensure Python 3.13+ with modern Tkinter (not system Tk 8.5)
+- **Widget styling**: Use `python3.13` specifically if multiple Python versions installed
+- **Import errors**: Run from client directory so modules can find each other
 
 ### Audio Issues
 - **No sound**: Check pygame mixer initialization and system audio
@@ -209,6 +282,7 @@ This enables advanced features like:
 ### Dependencies
 - **pygame import error**: Install with `pip install pygame`
 - **requests issues**: Update with `pip install --upgrade requests`
+- **tkinter issues**: Use Python 3.13+ with modern tkinter, not system Python
 
 ## Next Steps
 
