@@ -74,3 +74,124 @@ class MusicAPIClient:
             return response.status_code == 200
         except requests.RequestException:
             return False
+
+    # Playlist operations
+
+    def get_all_playlists(self) -> List[Dict]:
+        """Get all playlists."""
+        try:
+            response = self.session.get(f"{self.server_url}/api/playlists", timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("success"):
+                    return data.get("data", [])
+        except requests.RequestException as e:
+            print(f"Get playlists error: {e}")
+        return []
+
+    def create_playlist(self, name: str, description: Optional[str] = None) -> Optional[str]:
+        """Create a new playlist. Returns playlist ID on success."""
+        try:
+            response = self.session.post(
+                f"{self.server_url}/api/playlists",
+                json={"name": name, "description": description},
+                timeout=10
+            )
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("success"):
+                    return data.get("data")
+        except requests.RequestException as e:
+            print(f"Create playlist error: {e}")
+        return None
+
+    def get_playlist(self, playlist_id: str) -> Optional[Dict]:
+        """Get a playlist with all its items."""
+        try:
+            response = self.session.get(
+                f"{self.server_url}/api/playlists/{playlist_id}",
+                timeout=10
+            )
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("success"):
+                    return data.get("data")
+        except requests.RequestException as e:
+            print(f"Get playlist error: {e}")
+        return None
+
+    def delete_playlist(self, playlist_id: str) -> bool:
+        """Delete a playlist."""
+        try:
+            response = self.session.delete(
+                f"{self.server_url}/api/playlists/{playlist_id}",
+                timeout=10
+            )
+            return response.status_code == 200
+        except requests.RequestException as e:
+            print(f"Delete playlist error: {e}")
+            return False
+
+    def update_playlist(self, playlist_id: str, name: Optional[str] = None,
+                        description: Optional[str] = None) -> bool:
+        """Update playlist information."""
+        try:
+            payload = {}
+            if name is not None:
+                payload["name"] = name
+            if description is not None:
+                payload["description"] = description
+
+            response = self.session.put(
+                f"{self.server_url}/api/playlists/{playlist_id}",
+                json=payload,
+                timeout=10
+            )
+            return response.status_code == 200
+        except requests.RequestException as e:
+            print(f"Update playlist error: {e}")
+            return False
+
+    def add_track_to_playlist(self, playlist_id: str, song_id: str, position: int = 0) -> bool:
+        """Add a track to a playlist at the specified position."""
+        try:
+            response = self.session.post(
+                f"{self.server_url}/api/playlists/{playlist_id}/items",
+                json={"type": "track", "song_id": song_id, "position": position},
+                timeout=10
+            )
+            return response.status_code == 200
+        except requests.RequestException as e:
+            print(f"Add track error: {e}")
+            return False
+
+    def add_track_group_to_playlist(self, playlist_id: str, name: str,
+                                     song_ids: List[str], position: int = 0) -> bool:
+        """Add a track group to a playlist at the specified position."""
+        try:
+            response = self.session.post(
+                f"{self.server_url}/api/playlists/{playlist_id}/items",
+                json={
+                    "type": "group",
+                    "name": name,
+                    "song_ids": song_ids,
+                    "position": position
+                },
+                timeout=10
+            )
+            return response.status_code == 200
+        except requests.RequestException as e:
+            print(f"Add track group error: {e}")
+            return False
+
+    def remove_playlist_item(self, playlist_id: str, position: int) -> bool:
+        """Remove an item from a playlist at the specified position."""
+        try:
+            response = self.session.delete(
+                f"{self.server_url}/api/playlists/{playlist_id}/items/{position}",
+                timeout=10
+            )
+            return response.status_code == 200
+        except requests.RequestException as e:
+            print(f"Remove item error: {e}")
+            return False
