@@ -92,9 +92,13 @@ class MusicAPIClient:
     def create_playlist(self, name: str, description: Optional[str] = None) -> Optional[str]:
         """Create a new playlist. Returns playlist ID on success."""
         try:
+            payload = {"name": name}
+            if description is not None:
+                payload["description"] = description
+
             response = self.session.post(
                 f"{self.server_url}/api/playlists",
-                json={"name": name, "description": description},
+                json=payload,
                 timeout=10
             )
             if response.status_code == 200:
@@ -152,12 +156,16 @@ class MusicAPIClient:
             print(f"Update playlist error: {e}")
             return False
 
-    def add_track_to_playlist(self, playlist_id: str, song_id: str, position: int = 0) -> bool:
-        """Add a track to a playlist at the specified position."""
+    def add_track_to_playlist(self, playlist_id: str, song_id: str, position: Optional[int] = None) -> bool:
+        """Add a track to a playlist. If position is None, appends to the end."""
         try:
+            payload = {"type": "track", "song_id": song_id}
+            if position is not None:
+                payload["position"] = position
+
             response = self.session.post(
                 f"{self.server_url}/api/playlists/{playlist_id}/items",
-                json={"type": "track", "song_id": song_id, "position": position},
+                json=payload,
                 timeout=10
             )
             return response.status_code == 200
@@ -166,17 +174,20 @@ class MusicAPIClient:
             return False
 
     def add_track_group_to_playlist(self, playlist_id: str, name: str,
-                                     song_ids: List[str], position: int = 0) -> bool:
-        """Add a track group to a playlist at the specified position."""
+                                     song_ids: List[str], position: Optional[int] = None) -> bool:
+        """Add a track group to a playlist. If position is None, appends to the end."""
         try:
+            payload = {
+                "type": "group",
+                "name": name,
+                "song_ids": song_ids
+            }
+            if position is not None:
+                payload["position"] = position
+
             response = self.session.post(
                 f"{self.server_url}/api/playlists/{playlist_id}/items",
-                json={
-                    "type": "group",
-                    "name": name,
-                    "song_ids": song_ids,
-                    "position": position
-                },
+                json=payload,
                 timeout=10
             )
             return response.status_code == 200
