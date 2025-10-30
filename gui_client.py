@@ -205,30 +205,46 @@ class MusicGUIClient:
         
         threading.Thread(target=do_search, daemon=True).start()
     
-    def display_search_results(self, results: List[Dict]):
+    def display_search_results(self, results: Dict):
         """Display search results in the listbox."""
-        self.search_results = results
+        # Extract all result types from the new SearchResponse structure
+        songs = results.get('songs', []) if isinstance(results, dict) else []
+        albums = results.get('albums', []) if isinstance(results, dict) else []
+        artists = results.get('artists', []) if isinstance(results, dict) else []
+
+        self.search_results = songs
         self.results_listbox.delete(0, tk.END)
-        
-        if not results:
+
+        if not songs and not albums and not artists:
             self.results_listbox.insert(tk.END, "No results found")
             self.play_btn.configure(state=tk.DISABLED)
+            self.add_to_playlist_btn.configure(state=tk.DISABLED)
             self.show_status("No results found", "orange")
             return
-        
-        for song in results:
+
+        for song in songs:
             title = song.get('title', 'Unknown Title')
             artist = song.get('artist', 'Unknown Artist')
             album = song.get('album', 'Unknown Album')
             duration = song.get('duration', 0)
-            
+
             duration_str = f"{duration//60}:{duration%60:02d}" if duration else "Unknown"
             display_text = f"{title} - {artist} [{album}] ({duration_str})"
             self.results_listbox.insert(tk.END, display_text)
-        
-        self.play_btn.configure(state=tk.NORMAL)
-        self.add_to_playlist_btn.configure(state=tk.NORMAL)
-        self.show_status(f"Found {len(results)} songs", "green")
+
+        self.play_btn.configure(state=tk.NORMAL if songs else tk.DISABLED)
+        self.add_to_playlist_btn.configure(state=tk.NORMAL if songs else tk.DISABLED)
+
+        # Show detailed status with counts for all result types
+        status_parts = []
+        if songs:
+            status_parts.append(f"{len(songs)} song{'s' if len(songs) != 1 else ''}")
+        if albums:
+            status_parts.append(f"{len(albums)} album{'s' if len(albums) != 1 else ''}")
+        if artists:
+            status_parts.append(f"{len(artists)} artist{'s' if len(artists) != 1 else ''}")
+
+        self.show_status(f"Found {', '.join(status_parts)}", "green")
     
     def play_selected_song(self, event=None):
         """Play the currently selected song."""
