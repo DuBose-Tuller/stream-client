@@ -165,6 +165,7 @@ class MusicGUIClient:
         if not songs and not albums and not artists:
             self.results_listbox.insert(tk.END, "No results found")
             self.play_btn.configure(state=tk.DISABLED)
+            self.add_to_playlist_btn.configure(state=tk.DISABLED)
             self.show_status("No results found", "orange")
             return
 
@@ -179,6 +180,7 @@ class MusicGUIClient:
             self.results_listbox.insert(tk.END, display_text)
 
         self.play_btn.configure(state=tk.NORMAL if songs else tk.DISABLED)
+        self.add_to_playlist_btn.configure(state=tk.NORMAL if songs else tk.DISABLED)
 
         # Show detailed status with counts for all result types
         status_parts = []
