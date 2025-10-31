@@ -25,8 +25,13 @@ class MusicAPIClient:
         except requests.RequestException:
             return False
     
-    def search_songs(self, query: str) -> List[Dict]:
-        """Search for songs."""
+    def search_songs(self, query: str) -> Dict:
+        """Search for songs.
+
+        Returns:
+            Dict with structure: {"songs": [...], "albums": [...], "artists": [...]}
+            Handles both old format (flat array) and new format (SearchResponse structure).
+        """
         try:
             response = self.session.get(
                 f"{self.server_url}/api/search",
@@ -36,10 +41,28 @@ class MusicAPIClient:
             if response.status_code == 200:
                 data = response.json()
                 if data.get("success"):
-                    return data.get("data", [])
+                    result_data = data.get("data", [])
+
+                    # Check if we got the NEW format (dict with songs/albums/artists)
+                    if isinstance(result_data, dict):
+                        # New format: return as-is, but ensure all keys exist
+                        return {
+                            "songs": result_data.get("songs", []),
+                            "albums": result_data.get("albums", []),
+                            "artists": result_data.get("artists", [])
+                        }
+                    else:
+                        # Old format: convert flat array to new structure
+                        return {
+                            "songs": result_data if isinstance(result_data, list) else [],
+                            "albums": [],
+                            "artists": []
+                        }
         except requests.RequestException as e:
             print(f"Search error: {e}")
-        return []
+
+        # Return empty SearchResponse structure on error
+        return {"songs": [], "albums": [], "artists": []}
     
     def get_artists(self) -> List[Dict]:
         """Get all artists."""

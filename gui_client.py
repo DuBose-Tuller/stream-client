@@ -188,16 +188,22 @@ class MusicGUIClient:
         def do_search():
             try:
                 results = self.api.search_songs(query)
-                if results:
+                # Check if there are any actual results (songs, albums, or artists)
+                has_results = (results.get("songs") or
+                             results.get("albums") or
+                             results.get("artists"))
+
+                if has_results:
                     self.root.after(0, lambda: self.display_search_results(results))
                 else:
                     # Test if it's a connection issue by checking health
                     if not self.api.health_check():
-                        self.root.after(0, lambda: messagebox.showerror("Connection Error", 
+                        self.root.after(0, lambda: messagebox.showerror("Connection Error",
                                                                        "Cannot connect to music server.\\nPlease check that the server is running."))
                         self.root.after(0, lambda: self.show_status("Server not accessible", "red"))
                     else:
-                        self.root.after(0, lambda: self.display_search_results([]))
+                        # Pass empty SearchResponse structure instead of empty list
+                        self.root.after(0, lambda: self.display_search_results({"songs": [], "albums": [], "artists": []}))
                         self.root.after(0, lambda: self.show_status("No results found", "orange"))
             except Exception as e:
                 self.root.after(0, lambda: messagebox.showerror("Search Error", f"Search failed: {str(e)}"))

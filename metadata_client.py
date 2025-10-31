@@ -12,7 +12,11 @@ class MetadataClient:
         self.session = requests.Session()
     
     def search_songs(self, query: str) -> List[Dict]:
-        """Search for songs."""
+        """Search for songs.
+
+        Returns:
+            List of song dictionaries (extracts songs from SearchResponse for convenience).
+        """
         try:
             response = self.session.get(
                 f"{self.server_url}/api/search",
@@ -21,7 +25,15 @@ class MetadataClient:
             if response.status_code == 200:
                 data = response.json()
                 if data.get("success"):
-                    return data.get("data", [])
+                    result_data = data.get("data", [])
+
+                    # Check if we got the NEW format (dict with songs/albums/artists)
+                    if isinstance(result_data, dict):
+                        # New format: extract and return just the songs array
+                        return result_data.get("songs", [])
+                    else:
+                        # Old format: return the flat array as-is
+                        return result_data if isinstance(result_data, list) else []
         except requests.RequestException as e:
             print(f"Error searching: {e}")
         return []

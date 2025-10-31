@@ -60,7 +60,7 @@ class TestMusicAPIClient:
 
     @responses.activate
     def test_search_songs_success_old_format(self, api_client, server_url):
-        """Test successful song search with old API format."""
+        """Test successful song search with old API format (converted to new structure)."""
         responses.add(
             responses.GET,
             f"{server_url}/api/search",
@@ -70,10 +70,15 @@ class TestMusicAPIClient:
 
         result = api_client.search_songs("queen")
 
-        assert len(result) == 2
-        assert result[0]["title"] == "Bohemian Rhapsody"
-        assert result[0]["artist"] == "Queen"
-        assert result[1]["title"] == "Stairway to Heaven"
+        # Client now always returns SearchResponse structure
+        assert isinstance(result, dict)
+        assert "songs" in result
+        assert "albums" in result
+        assert "artists" in result
+        assert len(result["songs"]) == 2
+        assert result["songs"][0]["title"] == "Bohemian Rhapsody"
+        assert result["songs"][0]["artist"] == "Queen"
+        assert result["songs"][1]["title"] == "Stairway to Heaven"
 
         # Verify the request was made with correct params
         assert len(responses.calls) == 1
@@ -91,7 +96,8 @@ class TestMusicAPIClient:
 
         result = api_client.search_songs("nonexistentsong12345")
 
-        assert result == []
+        # Client now returns empty SearchResponse structure instead of empty list
+        assert result == {"songs": [], "albums": [], "artists": []}
 
     @responses.activate
     def test_search_songs_server_error(self, api_client, server_url):
@@ -105,13 +111,13 @@ class TestMusicAPIClient:
 
         result = api_client.search_songs("test")
 
-        assert result == []
+        assert result == {"songs": [], "albums": [], "artists": []}
 
     @responses.activate
     def test_search_songs_connection_error(self, api_client):
         """Test search with connection error."""
         result = api_client.search_songs("test")
-        assert result == []
+        assert result == {"songs": [], "albums": [], "artists": []}
 
     @responses.activate
     def test_search_songs_invalid_response(self, api_client, server_url):
@@ -124,7 +130,7 @@ class TestMusicAPIClient:
         )
 
         result = api_client.search_songs("test")
-        assert result == []
+        assert result == {"songs": [], "albums": [], "artists": []}
 
     @responses.activate
     def test_search_songs_missing_success_field(self, api_client, server_url):
@@ -137,13 +143,13 @@ class TestMusicAPIClient:
         )
 
         result = api_client.search_songs("test")
-        assert result == []
+        assert result == {"songs": [], "albums": [], "artists": []}
 
     # ========== Search Tests (NEW FORMAT - This should catch the bug!) ==========
 
     @responses.activate
     def test_search_songs_new_format_structure(self, api_client, server_url):
-        """Test that new API format breaks old client (this test SHOULD FAIL with current code)."""
+        """Test that client properly handles new API format (SearchResponse structure)."""
         responses.add(
             responses.GET,
             f"{server_url}/api/search",
@@ -153,23 +159,24 @@ class TestMusicAPIClient:
 
         result = api_client.search_songs("queen")
 
-        # With the NEW API format, the current client will fail because:
-        # - It expects data to be a list of songs
-        # - But now data is a dict with {songs: [], albums: [], artists: []}
-        # This test documents the bug!
+        # Client now properly handles the NEW format and returns SearchResponse structure
+        assert isinstance(result, dict)
+        assert "songs" in result
+        assert "albums" in result
+        assert "artists" in result
 
-        # What we GET with current broken code:
-        # result will be the dict {"songs": [...], "albums": [...], "artists": [...]}
-        # instead of the songs list
+        # Verify songs data
+        assert len(result["songs"]) == 2
+        assert result["songs"][0]["title"] == "Bohemian Rhapsody"
+        assert result["songs"][0]["artist"] == "Queen"
 
-        # What we WANT:
-        # assert isinstance(result, list)
-        # assert len(result) == 2
-        # assert result[0]["title"] == "Bohemian Rhapsody"
+        # Verify albums data
+        assert len(result["albums"]) == 2
+        assert result["albums"][0]["name"] == "A Night at the Opera"
 
-        # What ACTUALLY happens with broken code (uncomment to see failure):
-        # The current code returns data.get("data", []) which is a dict, not a list
-        assert isinstance(result, (list, dict))  # Flexible for now
+        # Verify artists data
+        assert len(result["artists"]) == 2
+        assert result["artists"][0]["name"] == "Queen"
 
     # ========== Artists Tests ==========
 
@@ -314,7 +321,8 @@ class TestMusicAPIClient:
 
         result = api_client.search_songs("AC/DC & Metallica!")
 
-        assert isinstance(result, list)
+        assert isinstance(result, dict)
+        assert result == {"songs": [], "albums": [], "artists": []}
         # Verify URL encoding happened
         assert len(responses.calls) == 1
 
@@ -329,7 +337,8 @@ class TestMusicAPIClient:
         )
 
         result = api_client.search_songs("")
-        assert isinstance(result, list)
+        assert isinstance(result, dict)
+        assert result == {"songs": [], "albums": [], "artists": []}
 
     @responses.activate
     def test_stream_song_with_large_file(self, api_client, server_url):
