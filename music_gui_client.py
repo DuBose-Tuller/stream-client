@@ -41,7 +41,7 @@ class MusicAPIClient:
             if response.status_code == 200:
                 data = response.json()
                 if data.get("success"):
-                    return data.get("data", [])
+                    return data.get("data", {}).get("songs", [])
         except requests.RequestException as e:
             print(f"Search error: {e}")
         return []

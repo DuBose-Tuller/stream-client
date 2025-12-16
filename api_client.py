@@ -7,7 +7,9 @@ including search, playback control, and audio streaming.
 """
 
 import requests
-from typing import Dict, List, Optional
+import tempfile
+import os
+from typing import Dict, List, Optional, Callable
 
 
 class MusicAPIClient:
@@ -36,7 +38,7 @@ class MusicAPIClient:
             if response.status_code == 200:
                 data = response.json()
                 if data.get("success"):
-                    return data.get("data", [])
+                    return data.get("data", {}).get("songs", [])
         except requests.RequestException as e:
             print(f"Search error: {e}")
         return []
@@ -62,6 +64,44 @@ class MusicAPIClient:
         except requests.RequestException as e:
             print(f"Stream error: {e}")
         return None
+
+    def stream_song_progressive(self, song_id: str, ready_callback: Optional[Callable[[str], None]] = None,
+                                buffer_size: int = 1024 * 1024) -> Optional[str]:
+        """
+        Stream song to temp file with progressive loading.
+        Calls ready_callback with temp file path once buffer_size bytes are downloaded.
+        Returns temp file path, or None on error.
+        """
+        try:
+            response = self.session.get(f"{self.server_url}/stream/{song_id}", stream=True, timeout=30)
+            if response.status_code != 200:
+                return None
+
+            # Create temp file (no extension, let pygame auto-detect format)
+            temp_fd, temp_path = tempfile.mkstemp(suffix='')
+            temp_file = os.fdopen(temp_fd, 'wb')
+
+            bytes_downloaded = 0
+            callback_called = False
+
+            # Download in chunks
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:
+                    temp_file.write(chunk)
+                    bytes_downloaded += len(chunk)
+
+                    # Call callback once we have enough buffered
+                    if not callback_called and bytes_downloaded >= buffer_size and ready_callback:
+                        temp_file.flush()  # Ensure data is written
+                        ready_callback(temp_path)
+                        callback_called = True
+
+            temp_file.close()
+            return temp_path
+
+        except requests.RequestException as e:
+            print(f"Stream error: {e}")
+            return None
     
     def notify_server_play(self, song: Dict) -> bool:
         """Tell server we're playing this song (for state management)."""

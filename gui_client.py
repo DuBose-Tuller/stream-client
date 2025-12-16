@@ -30,8 +30,7 @@ class MusicGUIClient:
         # State
         self.search_results = []
         self.current_volume = 0.8
-        self.playlists = []
-        self.current_playlist = None
+        self.is_loading = False
         
         # Setup GUI
         self.setup_gui()
@@ -248,39 +247,75 @@ class MusicGUIClient:
     
     def play_selected_song(self, event=None):
         """Play the currently selected song."""
+        # Prevent multiple simultaneous loads
+        if self.is_loading:
+            return
+
         selection = self.results_listbox.curselection()
         if not selection or not self.search_results:
             messagebox.showwarning("No Selection", "Please select a song to play")
             return
-        
+
         song_index = selection[0]
         if song_index >= len(self.search_results):
             return
-        
+
         song = self.search_results[song_index]
+
+        # Stop any existing playback
+        self.player.stop()
+
+        # Set loading state
+        self.is_loading = True
+        self.play_btn.configure(state=tk.DISABLED)
         self.show_status("Loading song...", "blue")
-        
+
         def play_song():
-            # Notify server
-            self.api.notify_server_play(song)
-            
-            # Get audio data
-            audio_data = self.api.stream_song(song['id'])
-            if not audio_data:
-                self.root.after(0, lambda: self.show_status("Failed to load song", "red"))
-                return
-            
-            # Play audio
-            success = self.player.play_audio_data(audio_data, song)
-            if success:
+            temp_path = None
+            try:
+                # Notify server
+                self.api.notify_server_play(song)
+
                 title = song.get('title', 'Unknown')
                 artist = song.get('artist', 'Unknown')
-                self.root.after(0, lambda: self.current_song_var.set(f"♪ {title} - {artist}"))
-                self.root.after(0, lambda: self.show_status("Playing", "green"))
-                self.root.after(0, self.update_button_states)
-            else:
-                self.root.after(0, lambda: self.show_status("Failed to play song", "red"))
-        
+                started_playing = False
+
+                def ready_to_play(file_path: str):
+                    """Called when enough data is buffered to start playing."""
+                    nonlocal started_playing
+                    if not started_playing:
+                        success = self.player.play_audio_file(file_path, song)
+                        if success:
+                            started_playing = True
+                            self.root.after(0, lambda: self.current_song_var.set(f"♪ {title} - {artist}"))
+                            self.root.after(0, lambda: self.show_status("Playing (buffering...)", "green"))
+                            self.root.after(0, self.update_button_states)
+
+                # Stream song progressively (starts playing after 1MB buffered)
+                temp_path = self.api.stream_song_progressive(song['id'], ready_callback=ready_to_play)
+
+                if not temp_path:
+                    self.root.after(0, lambda: self.show_status("Failed to load song", "red"))
+                    return
+
+                # If callback wasn't called (song smaller than buffer), play now
+                if not started_playing:
+                    success = self.player.play_audio_file(temp_path, song)
+                    if success:
+                        self.root.after(0, lambda: self.current_song_var.set(f"♪ {title} - {artist}"))
+                        self.root.after(0, lambda: self.show_status("Playing", "green"))
+                        self.root.after(0, self.update_button_states)
+                    else:
+                        self.root.after(0, lambda: self.show_status("Failed to play song", "red"))
+                else:
+                    # Update status once download completes
+                    self.root.after(0, lambda: self.show_status("Playing", "green"))
+
+            finally:
+                # Re-enable play button
+                self.is_loading = False
+                self.root.after(0, lambda: self.play_btn.configure(state=tk.NORMAL))
+
         threading.Thread(target=play_song, daemon=True).start()
     
     def pause_music(self):
