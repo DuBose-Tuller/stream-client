@@ -26,7 +26,21 @@ class AudioPlayer:
             audio_file = io.BytesIO(audio_data)
             pygame.mixer.music.load(audio_file)
             pygame.mixer.music.play()
-            
+
+            self.current_song = song_info
+            self.is_playing = True
+            self.is_paused = False
+            return True
+        except pygame.error as e:
+            print(f"Pygame error: {e}")
+            return False
+
+    def play_audio_file(self, file_path: str, song_info: Dict) -> bool:
+        """Play audio from file path."""
+        try:
+            pygame.mixer.music.load(file_path)
+            pygame.mixer.music.play()
+
             self.current_song = song_info
             self.is_playing = True
             self.is_paused = False
