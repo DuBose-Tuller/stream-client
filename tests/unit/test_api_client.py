@@ -347,3 +347,271 @@ class TestMusicAPIClient:
 
         assert result is not None
         assert len(result) == 10 * 1024 * 1024
+    # ========== Playlist Operations Tests ==========
+
+    @responses.activate
+    def test_get_all_playlists_success(self, api_client, server_url):
+        """Test successful playlist retrieval."""
+        responses.add(
+            responses.GET,
+            f"{server_url}/api/playlists",
+            json=sample_responses.PLAYLISTS_SUCCESS,
+            status=200
+        )
+
+        result = api_client.get_all_playlists()
+
+        assert len(result) == 2
+        assert result[0]["name"] == "Favorites"
+        assert result[1]["name"] == "Study Music"
+
+    @responses.activate
+    def test_get_all_playlists_error(self, api_client, server_url):
+        """Test playlist retrieval with error."""
+        responses.add(
+            responses.GET,
+            f"{server_url}/api/playlists",
+            status=500
+        )
+
+        result = api_client.get_all_playlists()
+        assert result == []
+
+    @responses.activate
+    def test_create_playlist_success(self, api_client, server_url):
+        """Test successful playlist creation."""
+        responses.add(
+            responses.POST,
+            f"{server_url}/api/playlists",
+            json=sample_responses.CREATE_PLAYLIST_SUCCESS,
+            status=200
+        )
+
+        result = api_client.create_playlist("New Playlist", "Description")
+
+        assert result == "pl-new-123"
+        assert len(responses.calls) == 1
+        assert b"New Playlist" in responses.calls[0].request.body
+
+    @responses.activate
+    def test_create_playlist_without_description(self, api_client, server_url):
+        """Test creating playlist without description."""
+        responses.add(
+            responses.POST,
+            f"{server_url}/api/playlists",
+            json=sample_responses.CREATE_PLAYLIST_SUCCESS,
+            status=200
+        )
+
+        result = api_client.create_playlist("Simple Playlist")
+        assert result == "pl-new-123"
+
+    @responses.activate
+    def test_create_playlist_error(self, api_client, server_url):
+        """Test playlist creation with error."""
+        responses.add(
+            responses.POST,
+            f"{server_url}/api/playlists",
+            json={"success": False, "error": "Database error"},
+            status=500
+        )
+
+        result = api_client.create_playlist("Test")
+        assert result is None
+
+    @responses.activate
+    def test_get_playlist_success(self, api_client, server_url):
+        """Test getting specific playlist."""
+        responses.add(
+            responses.GET,
+            f"{server_url}/api/playlists/pl-1",
+            json=sample_responses.PLAYLIST_DETAIL,
+            status=200
+        )
+
+        result = api_client.get_playlist("pl-1")
+
+        assert result is not None
+        assert result["name"] == "Favorites"
+        assert len(result["items"]) == 3
+
+    @responses.activate
+    def test_get_playlist_not_found(self, api_client, server_url):
+        """Test getting non-existent playlist."""
+        responses.add(
+            responses.GET,
+            f"{server_url}/api/playlists/invalid",
+            json={"success": False, "error": "Not found"},
+            status=404
+        )
+
+        result = api_client.get_playlist("invalid")
+        assert result is None
+
+    @responses.activate
+    def test_delete_playlist_success(self, api_client, server_url):
+        """Test successful playlist deletion."""
+        responses.add(
+            responses.DELETE,
+            f"{server_url}/api/playlists/pl-1",
+            status=200
+        )
+
+        result = api_client.delete_playlist("pl-1")
+        assert result is True
+
+    @responses.activate
+    def test_delete_playlist_error(self, api_client, server_url):
+        """Test playlist deletion with error."""
+        responses.add(
+            responses.DELETE,
+            f"{server_url}/api/playlists/pl-1",
+            status=500
+        )
+
+        result = api_client.delete_playlist("pl-1")
+        assert result is False
+
+    @responses.activate
+    def test_update_playlist_name_only(self, api_client, server_url):
+        """Test updating only playlist name."""
+        responses.add(
+            responses.PUT,
+            f"{server_url}/api/playlists/pl-1",
+            status=200
+        )
+
+        result = api_client.update_playlist("pl-1", name="New Name")
+        
+        assert result is True
+        assert b"New Name" in responses.calls[0].request.body
+
+    @responses.activate
+    def test_update_playlist_description_only(self, api_client, server_url):
+        """Test updating only playlist description."""
+        responses.add(
+            responses.PUT,
+            f"{server_url}/api/playlists/pl-1",
+            status=200
+        )
+
+        result = api_client.update_playlist("pl-1", description="New Description")
+        
+        assert result is True
+        assert b"New Description" in responses.calls[0].request.body
+
+    @responses.activate
+    def test_update_playlist_both_fields(self, api_client, server_url):
+        """Test updating both name and description."""
+        responses.add(
+            responses.PUT,
+            f"{server_url}/api/playlists/pl-1",
+            status=200
+        )
+
+        result = api_client.update_playlist("pl-1", name="Updated", description="Updated desc")
+        
+        assert result is True
+
+    @responses.activate
+    def test_update_playlist_error(self, api_client, server_url):
+        """Test playlist update with error."""
+        responses.add(
+            responses.PUT,
+            f"{server_url}/api/playlists/pl-1",
+            status=500
+        )
+
+        result = api_client.update_playlist("pl-1", name="Test")
+        assert result is False
+
+    @responses.activate
+    def test_add_track_to_playlist_success(self, api_client, server_url):
+        """Test adding track to playlist."""
+        responses.add(
+            responses.POST,
+            f"{server_url}/api/playlists/pl-1/items",
+            status=200
+        )
+
+        result = api_client.add_track_to_playlist("pl-1", "song-123", position=0)
+        
+        assert result is True
+        assert b"song-123" in responses.calls[0].request.body
+        assert b"track" in responses.calls[0].request.body
+
+    @responses.activate
+    def test_add_track_to_playlist_error(self, api_client, server_url):
+        """Test adding track with error."""
+        responses.add(
+            responses.POST,
+            f"{server_url}/api/playlists/pl-1/items",
+            status=500
+        )
+
+        result = api_client.add_track_to_playlist("pl-1", "song-123")
+        assert result is False
+
+    @responses.activate
+    def test_add_track_group_to_playlist_success(self, api_client, server_url):
+        """Test adding track group to playlist."""
+        responses.add(
+            responses.POST,
+            f"{server_url}/api/playlists/pl-1/items",
+            status=200
+        )
+
+        song_ids = ["song-1", "song-2", "song-3"]
+        result = api_client.add_track_group_to_playlist("pl-1", "Album Group", song_ids, position=0)
+        
+        assert result is True
+        assert b"Album Group" in responses.calls[0].request.body
+        assert b"group" in responses.calls[0].request.body
+
+    @responses.activate
+    def test_add_track_group_error(self, api_client, server_url):
+        """Test adding track group with error."""
+        responses.add(
+            responses.POST,
+            f"{server_url}/api/playlists/pl-1/items",
+            status=500
+        )
+
+        result = api_client.add_track_group_to_playlist("pl-1", "Test", ["song-1"])
+        assert result is False
+
+    @responses.activate
+    def test_remove_playlist_item_success(self, api_client, server_url):
+        """Test removing item from playlist."""
+        responses.add(
+            responses.DELETE,
+            f"{server_url}/api/playlists/pl-1/items/0",
+            status=200
+        )
+
+        result = api_client.remove_playlist_item("pl-1", 0)
+        assert result is True
+
+    @responses.activate
+    def test_remove_playlist_item_error(self, api_client, server_url):
+        """Test removing item with error."""
+        responses.add(
+            responses.DELETE,
+            f"{server_url}/api/playlists/pl-1/items/0",
+            status=500
+        )
+
+        result = api_client.remove_playlist_item("pl-1", 0)
+        assert result is False
+
+    @responses.activate
+    def test_remove_playlist_item_invalid_position(self, api_client, server_url):
+        """Test removing item at invalid position."""
+        responses.add(
+            responses.DELETE,
+            f"{server_url}/api/playlists/pl-1/items/999",
+            status=404
+        )
+
+        result = api_client.remove_playlist_item("pl-1", 999)
+        assert result is False

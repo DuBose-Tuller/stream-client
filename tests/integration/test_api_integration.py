@@ -311,3 +311,44 @@ class TestEndToEndWorkflow:
 
         # If we got here, the full workflow works!
         print(f"\n✅ Full workflow test passed with song: {song.get('title', 'Unknown')}")
+
+
+class TestPlaylistIntegration:
+    """Integration tests for playlist operations against real server."""
+
+    @pytest.fixture
+    def api_client(self):
+        """Create API client pointing to real server."""
+        return MusicAPIClient("http://pi-server:8080")
+
+    def test_get_all_playlists(self, api_client):
+        """Test getting all playlists from server."""
+        result = api_client.get_all_playlists()
+        assert isinstance(result, list)
+
+    def test_create_and_delete_playlist_workflow(self, api_client):
+        """Test full playlist lifecycle."""
+        # Create playlist
+        playlist_id = api_client.create_playlist("Test Playlist", "Integration test")
+        
+        if playlist_id:
+            # Verify it was created
+            playlists = api_client.get_all_playlists()
+            assert any(p.get('id') == playlist_id for p in playlists)
+            
+            # Clean up - delete the playlist
+            delete_result = api_client.delete_playlist(playlist_id)
+            assert isinstance(delete_result, bool)
+
+    def test_playlist_operations_when_available(self, api_client):
+        """Test playlist operations if server supports them."""
+        # Try to get playlists
+        playlists = api_client.get_all_playlists()
+        
+        if playlists and len(playlists) > 0:
+            # If we have playlists, test getting one
+            playlist_id = playlists[0]['id']
+            playlist = api_client.get_playlist(playlist_id)
+            
+            # Should get back a playlist object
+            assert playlist is None or isinstance(playlist, dict)
