@@ -51,9 +51,8 @@ class MusicAPIClient:
             if response.status_code == 200:
                 data = response.json()
                 if data.get("success"):
-                    # Extract artists array from response object
-                    artists_data = data.get("data", {})
-                    return artists_data.get("artists", [])
+                    # API returns artists list directly in data
+                    return data.get("data", [])
         except requests.RequestException as e:
             print(f"Artists error: {e}")
         return []
