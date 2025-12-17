@@ -31,6 +31,8 @@ class MusicGUIClient:
         self.search_results = []
         self.current_volume = 0.8
         self.is_loading = False
+        self.position_update_job = None
+        self.is_seeking = False
         
         # Setup GUI
         self.setup_gui()
@@ -129,7 +131,32 @@ class MusicGUIClient:
         # Current song display
         self.current_song_var = tk.StringVar(value="No song playing")
         current_song_label = ttk.Label(player_frame, textvariable=self.current_song_var, font=("TkDefaultFont", 11, "bold"))
-        current_song_label.pack(pady=(10, 10))
+        current_song_label.pack(pady=(10, 5))
+
+        # Seeking controls
+        seek_frame = ttk.Frame(player_frame)
+        seek_frame.pack(fill=tk.X, padx=20, pady=(5, 10))
+
+        # Time labels
+        self.current_time_var = tk.StringVar(value="0:00")
+        self.total_time_var = tk.StringVar(value="0:00")
+
+        ttk.Label(seek_frame, textvariable=self.current_time_var, font=("TkDefaultFont", 9)).pack(side=tk.LEFT)
+
+        # Progress bar
+        self.seek_var = tk.DoubleVar(value=0.0)
+        self.seek_scale = ttk.Scale(
+            seek_frame,
+            from_=0.0,
+            to=100.0,
+            variable=self.seek_var,
+            orient=tk.HORIZONTAL,
+            command=self.on_seek_drag
+        )
+        self.seek_scale.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        self.seek_scale.bind('<ButtonRelease-1>', self.on_seek_release)
+
+        ttk.Label(seek_frame, textvariable=self.total_time_var, font=("TkDefaultFont", 9)).pack(side=tk.RIGHT)
         
         # Control buttons
         controls_frame = ttk.Frame(player_frame)
@@ -290,6 +317,7 @@ class MusicGUIClient:
                             self.root.after(0, lambda: self.current_song_var.set(f"♪ {title} - {artist}"))
                             self.root.after(0, lambda: self.show_status("Playing (buffering...)", "green"))
                             self.root.after(0, self.update_button_states)
+                            self.root.after(0, self.start_position_updates)
 
                 # Stream song progressively (starts playing after 1MB buffered)
                 temp_path = self.api.stream_song_progressive(song['id'], ready_callback=ready_to_play)
@@ -305,6 +333,7 @@ class MusicGUIClient:
                         self.root.after(0, lambda: self.current_song_var.set(f"♪ {title} - {artist}"))
                         self.root.after(0, lambda: self.show_status("Playing", "green"))
                         self.root.after(0, self.update_button_states)
+                        self.root.after(0, self.start_position_updates)
                     else:
                         self.root.after(0, lambda: self.show_status("Failed to play song", "red"))
                 else:
@@ -336,6 +365,8 @@ class MusicGUIClient:
         self.current_song_var.set("No song playing")
         self.show_status("Stopped", "black")
         self.update_button_states()
+        self.stop_position_updates()
+        self.reset_seek_controls()
     
     def volume_changed(self, value):
         """Handle volume slider changes."""
@@ -343,6 +374,82 @@ class MusicGUIClient:
         self.current_volume = volume
         self.player.set_volume(volume)
         self.volume_label.configure(text=f"{int(volume*100)}%")
+
+    def format_time(self, seconds: float) -> str:
+        """Format seconds as M:SS."""
+        minutes = int(seconds // 60)
+        secs = int(seconds % 60)
+        return f"{minutes}:{secs:02d}"
+
+    def update_position(self):
+        """Update the seek bar and time labels with current position."""
+        if not self.player.is_playing:
+            return
+
+        position = self.player.get_position()
+        duration = self.player.get_duration()
+
+        if duration > 0 and not self.is_seeking:
+            percentage = (position / duration) * 100
+            self.seek_var.set(percentage)
+            self.current_time_var.set(self.format_time(position))
+
+        # Check if song has ended
+        if not self.player.get_busy() and self.player.is_playing:
+            self.stop_music()
+            return
+
+        # Schedule next update
+        self.position_update_job = self.root.after(100, self.update_position)
+
+    def start_position_updates(self):
+        """Start the position update loop."""
+        self.stop_position_updates()
+        duration = self.player.get_duration()
+        if duration > 0:
+            self.total_time_var.set(self.format_time(duration))
+        self.update_position()
+
+    def stop_position_updates(self):
+        """Stop the position update loop."""
+        if self.position_update_job:
+            self.root.after_cancel(self.position_update_job)
+            self.position_update_job = None
+
+    def reset_seek_controls(self):
+        """Reset seek controls to initial state."""
+        self.seek_var.set(0.0)
+        self.current_time_var.set("0:00")
+        self.total_time_var.set("0:00")
+
+    def on_seek_drag(self, value):
+        """Handle seek bar dragging."""
+        if not self.player.is_playing:
+            return
+
+        self.is_seeking = True
+        duration = self.player.get_duration()
+        if duration > 0:
+            position = (float(value) / 100.0) * duration
+            self.current_time_var.set(self.format_time(position))
+
+    def on_seek_release(self, event):
+        """Handle seek bar release (perform actual seek)."""
+        if not self.player.is_playing:
+            self.is_seeking = False
+            return
+
+        duration = self.player.get_duration()
+        if duration > 0:
+            percentage = self.seek_var.get()
+            target_position = (percentage / 100.0) * duration
+
+            success = self.player.seek(target_position)
+            if not success:
+                messagebox.showwarning("Seek Failed",
+                                     "Unable to seek in this audio format. Try MP3 for better seeking support.")
+
+        self.is_seeking = False
     
     def update_button_states(self):
         """Update button enabled/disabled states based on player state."""

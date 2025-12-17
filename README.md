@@ -51,6 +51,8 @@ python main.py
 Full-featured desktop music client with:
 - **Search Interface**: Real-time song search with results display
 - **Playback Controls**: Play, pause, resume, stop with visual feedback
+- **Seeking**: Interactive progress bar with drag-to-seek functionality
+- **Position Tracking**: Real-time display of current position and total duration
 - **Volume Control**: Interactive volume slider
 - **Status Updates**: Connection status and playback information
 - **Modern UI**: Native macOS/Windows styling with ttk widgets
@@ -194,12 +196,16 @@ The desktop GUI client uses a modular design for maintainability:
 2. **`audio_player.py`** - Audio Playback
    - pygame mixer initialization and management
    - Play, pause, resume, stop controls
+   - Seeking with format-aware fallback strategies
+   - Position tracking and duration management
    - Volume control and status tracking
-   - Audio data loading from bytes
+   - Audio data loading from bytes or file paths
 
 3. **`gui_client.py`** - User Interface
    - tkinter/ttk-based modern GUI
    - Search interface with results display
+   - Interactive seeking progress bar with time display
+   - Real-time position updates (100ms refresh)
    - Player controls with state management
    - Threading for non-blocking operations
 
@@ -244,7 +250,44 @@ The GUI client addresses a critical compatibility issue:
 - **requests issues**: Update with `pip install --upgrade requests`
 - **tkinter issues**: Use Python 3.13+ with modern tkinter, not system Python
 
+## Seeking Functionality
+
+The client now supports full seeking functionality with format-aware fallback strategies:
+
+### Features
+- **Interactive Progress Bar**: Drag the slider to seek to any position
+- **Real-time Position Display**: Shows current time and total duration (e.g., "2:34 / 4:12")
+- **Format Support**: Works with MP3, OGG, and other formats
+- **Fallback Strategy**: Automatically handles formats with limited seek support
+
+### Implementation Details
+
+#### Seeking Methods
+1. **Direct Seeking**: Uses `pygame.mixer.music.set_pos()` for instant seeking
+2. **Reload Fallback**: If direct seeking fails, reloads the file and plays from position
+3. **State Preservation**: Maintains volume and pause state during fallback seeking
+
+#### Format Compatibility
+- **MP3**: Excellent seeking support (seeks to nearest frame)
+- **OGG/Vorbis**: Good seeking accuracy
+- **FLAC**: May have limited backward seeking (uses fallback)
+- **M4A/AAC**: Format-dependent (pygame mixer support varies)
+
+#### Progressive Streaming
+- Client downloads complete song to temp file for full seeking capability
+- Playback can start after 1MB buffered for quick startup
+- Complete buffering enables unlimited seek operations
+
+### Technical Notes
+
+From TECHNICAL_LEARNINGS.md:
+- Direct seeking is format-dependent in pygame.mixer
+- Complete song buffering provides best seeking experience
+- Fallback method causes brief interruption but works reliably
+- Position tracking uses 100ms update interval for smooth UI
+
 ## Next Steps
 
-1. Playlists/queues
-2. Display album art
+1. Test seeking extensively with different audio formats
+2. Playlists/queues
+3. Display album art

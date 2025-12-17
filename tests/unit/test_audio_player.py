@@ -42,6 +42,8 @@ class TestAudioPlayer:
         assert player.is_playing is False
         assert player.is_paused is False
         assert player.current_song is None
+        assert player.current_file_path is None
+        assert player.song_duration == 0
 
     # ========== Play Audio Tests ==========
 
@@ -195,6 +197,8 @@ class TestAudioPlayer:
         assert audio_player.is_playing is False
         assert audio_player.is_paused is False
         assert audio_player.current_song is None
+        assert audio_player.current_file_path is None
+        assert audio_player.song_duration == 0
         mock_pygame.mixer.music.stop.assert_called_once()
 
     def test_stop_while_paused(self, audio_player, mock_pygame, sample_audio_data, sample_song):
@@ -344,3 +348,157 @@ class TestAudioPlayer:
 
         with pytest.raises(Exception):
             AudioPlayer()
+
+    # ========== Position and Duration Tests ==========
+
+    def test_get_position_while_playing(self, audio_player, mock_pygame, sample_audio_data, sample_song):
+        """Test getting playback position while playing."""
+        audio_player.play_audio_data(sample_audio_data, sample_song)
+
+        mock_pygame.mixer.music.get_pos.return_value = 5000
+
+        position = audio_player.get_position()
+
+        assert position == 5.0
+        mock_pygame.mixer.music.get_pos.assert_called_once()
+
+    def test_get_position_while_not_playing(self, audio_player, mock_pygame):
+        """Test getting position when nothing is playing."""
+        position = audio_player.get_position()
+
+        assert position == 0.0
+        mock_pygame.mixer.music.get_pos.assert_not_called()
+
+    def test_get_position_negative_value(self, audio_player, mock_pygame, sample_audio_data, sample_song):
+        """Test getting position when pygame returns negative value."""
+        audio_player.play_audio_data(sample_audio_data, sample_song)
+
+        mock_pygame.mixer.music.get_pos.return_value = -1
+
+        position = audio_player.get_position()
+
+        assert position == 0.0
+
+    def test_get_duration_after_play(self, audio_player, mock_pygame, sample_audio_data):
+        """Test getting duration after playing a song."""
+        song = {"id": "1", "title": "Test", "duration": 180}
+        audio_player.play_audio_data(sample_audio_data, song)
+
+        duration = audio_player.get_duration()
+
+        assert duration == 180
+
+    def test_get_duration_no_song(self, audio_player):
+        """Test getting duration when no song is loaded."""
+        duration = audio_player.get_duration()
+
+        assert duration == 0
+
+    def test_get_duration_song_without_duration(self, audio_player, mock_pygame, sample_audio_data):
+        """Test getting duration for song without duration field."""
+        song = {"id": "1", "title": "Test"}
+        audio_player.play_audio_data(sample_audio_data, song)
+
+        duration = audio_player.get_duration()
+
+        assert duration == 0
+
+    # ========== Seeking Tests ==========
+
+    def test_seek_while_playing_success(self, audio_player, mock_pygame, sample_audio_data):
+        """Test seeking while playing (direct seek succeeds)."""
+        song = {"id": "1", "title": "Test", "duration": 180}
+        audio_player.play_audio_file("/tmp/test.mp3", song)
+
+        mock_pygame.mixer.music.set_pos = MagicMock()
+
+        result = audio_player.seek(60.0)
+
+        assert result is True
+        mock_pygame.mixer.music.set_pos.assert_called_once_with(60.0)
+
+    def test_seek_while_playing_fallback_reload(self, audio_player, mock_pygame, sample_audio_data):
+        """Test seeking with fallback to reload when direct seek fails."""
+        song = {"id": "1", "title": "Test", "duration": 180}
+        audio_player.play_audio_file("/tmp/test.mp3", song)
+
+        mock_pygame.mixer.music.set_pos = MagicMock(side_effect=mock_pygame.error("Seek not supported"))
+        mock_pygame.mixer.music.load = MagicMock()
+        mock_pygame.mixer.music.play = MagicMock()
+        mock_pygame.mixer.music.get_volume.return_value = 0.8
+        mock_pygame.mixer.music.set_volume = MagicMock()
+
+        result = audio_player.seek(60.0)
+
+        assert result is True
+        mock_pygame.mixer.music.load.assert_called_once_with("/tmp/test.mp3")
+        mock_pygame.mixer.music.play.assert_called_once_with(start=60.0)
+        mock_pygame.mixer.music.set_volume.assert_called_once_with(0.8)
+
+    def test_seek_while_playing_fallback_preserves_pause(self, audio_player, mock_pygame, sample_audio_data):
+        """Test that seeking with fallback preserves pause state."""
+        song = {"id": "1", "title": "Test", "duration": 180}
+        audio_player.play_audio_file("/tmp/test.mp3", song)
+        audio_player.pause()
+
+        mock_pygame.mixer.music.set_pos = MagicMock(side_effect=mock_pygame.error("Seek not supported"))
+        mock_pygame.mixer.music.load = MagicMock()
+        mock_pygame.mixer.music.play = MagicMock()
+        mock_pygame.mixer.music.get_volume.return_value = 0.5
+        mock_pygame.mixer.music.pause = MagicMock()
+
+        result = audio_player.seek(30.0)
+
+        assert result is True
+        mock_pygame.mixer.music.pause.assert_called_once()
+
+    def test_seek_while_not_playing(self, audio_player, mock_pygame):
+        """Test seeking when nothing is playing."""
+        result = audio_player.seek(30.0)
+
+        assert result is False
+        mock_pygame.mixer.music.set_pos.assert_not_called()
+
+    def test_seek_without_file_path(self, audio_player, mock_pygame, sample_audio_data):
+        """Test seeking without a file path loaded."""
+        song = {"id": "1", "title": "Test", "duration": 180}
+        audio_player.play_audio_data(sample_audio_data, song)
+
+        result = audio_player.seek(30.0)
+
+        assert result is False
+
+    def test_seek_clamps_negative_position(self, audio_player, mock_pygame):
+        """Test that seeking to negative position clamps to 0."""
+        song = {"id": "1", "title": "Test", "duration": 180}
+        audio_player.play_audio_file("/tmp/test.mp3", song)
+
+        mock_pygame.mixer.music.set_pos = MagicMock()
+
+        audio_player.seek(-10.0)
+
+        mock_pygame.mixer.music.set_pos.assert_called_once_with(0.0)
+
+    def test_seek_clamps_position_beyond_duration(self, audio_player, mock_pygame):
+        """Test that seeking beyond duration clamps to duration."""
+        song = {"id": "1", "title": "Test", "duration": 180}
+        audio_player.play_audio_file("/tmp/test.mp3", song)
+
+        mock_pygame.mixer.music.set_pos = MagicMock()
+
+        audio_player.seek(200.0)
+
+        mock_pygame.mixer.music.set_pos.assert_called_once_with(180.0)
+
+    def test_seek_with_exception(self, audio_player, mock_pygame):
+        """Test seeking handles unexpected exceptions gracefully."""
+        song = {"id": "1", "title": "Test", "duration": 180}
+        audio_player.play_audio_file("/tmp/test.mp3", song)
+
+        # Make both set_pos and the fallback load fail
+        mock_pygame.mixer.music.set_pos = MagicMock(side_effect=mock_pygame.error("Seek not supported"))
+        mock_pygame.mixer.music.load = MagicMock(side_effect=Exception("Load failed"))
+
+        result = audio_player.seek(60.0)
+
+        assert result is False
