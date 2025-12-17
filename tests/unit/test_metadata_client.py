@@ -36,7 +36,7 @@ class TestMetadataClient:
         responses.add(
             responses.GET,
             f"{server_url}/api/search",
-            json={"success": True, "data": sample_songs_list},
+            json={"success": True, "data": {"songs": sample_songs_list, "albums": [], "artists": []}},
             status=200
         )
 
@@ -51,7 +51,7 @@ class TestMetadataClient:
         responses.add(
             responses.GET,
             f"{server_url}/api/search",
-            json={"success": True, "data": []},
+            json={"success": True, "data": {"songs": [], "albums": [], "artists": []}},
             status=200
         )
 
