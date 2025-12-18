@@ -13,6 +13,7 @@ from typing import Dict, List
 
 from api_client import MusicAPIClient
 from audio_player import AudioPlayer
+from playback_queue import PlaybackQueue
 
 
 class MusicGUIClient:
@@ -26,13 +27,15 @@ class MusicGUIClient:
         # Initialize components
         self.api = MusicAPIClient()
         self.player = AudioPlayer()
-        
+        self.queue = PlaybackQueue()
+
         # State
         self.search_results = []
         self.current_volume = 0.8
         self.is_loading = False
         self.position_update_job = None
         self.is_seeking = False
+        self.is_prebuffering = False
         
         # Setup GUI
         self.setup_gui()
@@ -173,7 +176,10 @@ class MusicGUIClient:
         
         self.stop_btn = ttk.Button(controls_frame, text="Stop", command=self.stop_music, state=tk.DISABLED)
         self.stop_btn.pack(side=tk.LEFT, padx=5)
-        
+
+        self.next_btn = ttk.Button(controls_frame, text="Next", command=self.skip_to_next, state=tk.DISABLED)
+        self.next_btn.pack(side=tk.LEFT, padx=5)
+
         # Volume control
         volume_frame = ttk.Frame(player_frame)
         volume_frame.pack(pady=(10, 10))
@@ -185,7 +191,34 @@ class MusicGUIClient:
         volume_scale.pack(side=tk.LEFT, padx=(5, 5))
         self.volume_label = ttk.Label(volume_frame, text=f"{int(self.current_volume*100)}%")
         self.volume_label.pack(side=tk.LEFT)
-    
+
+        # Queue section (below player controls)
+        queue_frame = ttk.LabelFrame(left_frame, text="Queue", padding=10)
+        queue_frame.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
+
+        # Queue listbox with scrollbar
+        queue_list_frame = ttk.Frame(queue_frame)
+        queue_list_frame.pack(fill=tk.BOTH, expand=True)
+
+        self.queue_listbox = tk.Listbox(queue_list_frame, font=("TkDefaultFont", 10), height=8)
+        queue_scrollbar = ttk.Scrollbar(queue_list_frame, orient=tk.VERTICAL, command=self.queue_listbox.yview)
+        self.queue_listbox.configure(yscrollcommand=queue_scrollbar.set)
+
+        self.queue_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        queue_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # Bind double-click to jump to queue item
+        self.queue_listbox.bind('<Double-Button-1>', self.jump_to_queue_item)
+
+        # Queue buttons
+        queue_btn_frame = ttk.Frame(queue_frame)
+        queue_btn_frame.pack(fill=tk.X, pady=(10, 0))
+
+        ttk.Button(queue_btn_frame, text="Remove", command=self.remove_from_queue).pack(side=tk.LEFT, padx=2)
+        ttk.Button(queue_btn_frame, text="Clear All", command=self.clear_queue).pack(side=tk.LEFT, padx=2)
+        ttk.Button(queue_btn_frame, text="Clear Auto", command=self.clear_auto_queue).pack(side=tk.LEFT, padx=2)
+        ttk.Button(queue_btn_frame, text="Add to Queue", command=self.add_selected_to_queue).pack(side=tk.LEFT, padx=2)
+
     def check_server_connection(self):
         """Check if server is accessible."""
         def check_connection():
@@ -273,7 +306,7 @@ class MusicGUIClient:
         self.show_status(f"Found {', '.join(status_parts)}", "green")
     
     def play_selected_song(self, event=None):
-        """Play the currently selected song."""
+        """Play the currently selected song, replacing auto queue items."""
         # Prevent multiple simultaneous loads
         if self.is_loading:
             return
@@ -288,6 +321,28 @@ class MusicGUIClient:
             return
 
         song = self.search_results[song_index]
+
+        # Clear previous auto items and add this song as auto item
+        self.queue.clear_auto_items()
+        self.queue.add_auto_songs([song])
+        self.queue.current_index = 0
+        self.update_queue_display()
+
+        # Play current queue item
+        self.play_current_in_queue()
+
+    def play_current_in_queue(self):
+        """Play the current queue item."""
+        current = self.queue.get_current()
+        if not current:
+            self.show_status("No song in queue", "orange")
+            return
+
+        song = current.song
+
+        # Prevent multiple simultaneous loads
+        if self.is_loading:
+            return
 
         # Stop any existing playback
         self.player.stop()
@@ -318,6 +373,7 @@ class MusicGUIClient:
                             self.root.after(0, lambda: self.show_status("Playing (buffering...)", "green"))
                             self.root.after(0, self.update_button_states)
                             self.root.after(0, self.start_position_updates)
+                            self.root.after(0, self.update_queue_display)
 
                 # Stream song progressively (starts playing after 1MB buffered)
                 temp_path = self.api.stream_song_progressive(song['id'], ready_callback=ready_to_play)
@@ -334,6 +390,7 @@ class MusicGUIClient:
                         self.root.after(0, lambda: self.show_status("Playing", "green"))
                         self.root.after(0, self.update_button_states)
                         self.root.after(0, self.start_position_updates)
+                        self.root.after(0, self.update_queue_display)
                     else:
                         self.root.after(0, lambda: self.show_status("Failed to play song", "red"))
                 else:
@@ -346,6 +403,15 @@ class MusicGUIClient:
                 self.root.after(0, lambda: self.play_btn.configure(state=tk.NORMAL))
 
         threading.Thread(target=play_song, daemon=True).start()
+
+    def play_next_in_queue(self):
+        """Advance to next song and play it."""
+        if self.queue.has_next():
+            self.queue.advance()
+            self.play_current_in_queue()
+        else:
+            self.stop_music()
+            self.show_status("Queue finished", "blue")
     
     def pause_music(self):
         """Pause current playback."""
@@ -394,9 +460,17 @@ class MusicGUIClient:
             self.seek_var.set(percentage)
             self.current_time_var.set(self.format_time(position))
 
-        # Check if song has ended
+            # PRE-BUFFER NEXT TRACK (at 80% or 15 seconds remaining)
+            if self.queue.has_next():
+                time_remaining = duration - position
+                should_prebuffer = (percentage > 80) or (time_remaining < 15)
+
+                if should_prebuffer and not self.is_prebuffering:
+                    self.start_prebuffering_next()
+
+        # Check if song has ended - auto-advance to next in queue
         if not self.player.get_busy() and self.player.is_playing:
-            self.stop_music()
+            self.handle_song_end()
             return
 
         # Schedule next update
@@ -461,10 +535,13 @@ class MusicGUIClient:
                 self.pause_btn.configure(state=tk.NORMAL)
                 self.resume_btn.configure(state=tk.DISABLED)
             self.stop_btn.configure(state=tk.NORMAL)
+            # Enable Next button if there's a next item in queue
+            self.next_btn.configure(state=tk.NORMAL if self.queue.has_next() else tk.DISABLED)
         else:
             self.pause_btn.configure(state=tk.DISABLED)
             self.resume_btn.configure(state=tk.DISABLED)
             self.stop_btn.configure(state=tk.DISABLED)
+            self.next_btn.configure(state=tk.DISABLED)
     
     def load_playlists(self):
         """Load all playlists from the server."""
@@ -726,6 +803,159 @@ class MusicGUIClient:
         ttk.Button(btn_frame, text="Cancel", command=dialog.destroy).pack(side=tk.LEFT, padx=5)
 
         playlist_select_listbox.bind('<Double-Button-1>', lambda e: add())
+
+    # ========== Queue Management Methods ==========
+
+    def update_queue_display(self):
+        """Update the queue listbox with current queue items."""
+        self.queue_listbox.delete(0, tk.END)
+
+        if len(self.queue) == 0:
+            self.queue_listbox.insert(tk.END, "  No songs queued")
+            return
+
+        display_items = self.queue.get_queue_display()
+        for display_text, item_type, is_current in display_items:
+            self.queue_listbox.insert(tk.END, display_text)
+
+    def add_selected_to_queue(self):
+        """Add selected search result to manual queue."""
+        selection = self.results_listbox.curselection()
+        if not selection or not self.search_results:
+            messagebox.showwarning("No Selection", "Please select a song to add to queue")
+            return
+
+        song_index = selection[0]
+        if song_index >= len(self.search_results):
+            return
+
+        song = self.search_results[song_index]
+        self.queue.add_manual(song)
+        self.update_queue_display()
+
+        title = song.get('title', 'Unknown')
+        self.show_status(f"Added '{title}' to queue", "green")
+
+    def remove_from_queue(self):
+        """Remove selected item from queue."""
+        selection = self.queue_listbox.curselection()
+        if not selection:
+            messagebox.showwarning("No Selection", "Please select a queue item to remove")
+            return
+
+        index = selection[0]
+
+        # Don't allow removing "No songs queued" placeholder
+        if len(self.queue) == 0:
+            return
+
+        # Don't allow removing currently playing song (index matches current_index)
+        if index == self.queue.current_index:
+            messagebox.showwarning("Cannot Remove", "Cannot remove currently playing song")
+            return
+
+        self.queue.remove_at(index)
+        self.update_queue_display()
+        self.show_status("Removed from queue", "blue")
+
+    def clear_queue(self):
+        """Clear all songs from queue."""
+        if len(self.queue) == 0:
+            return
+
+        if messagebox.askyesno("Clear Queue", "Clear all songs from queue?"):
+            self.queue.clear()
+            self.update_queue_display()
+            self.show_status("Queue cleared", "blue")
+
+    def clear_auto_queue(self):
+        """Clear only auto items from queue."""
+        if len(self.queue) == 0:
+            return
+
+        self.queue.clear_auto_items()
+        self.update_queue_display()
+        self.show_status("Auto queue cleared", "blue")
+
+    def jump_to_queue_item(self, event=None):
+        """Play selected queue item immediately."""
+        selection = self.queue_listbox.curselection()
+        if not selection:
+            return
+
+        index = selection[0]
+
+        # Can't jump to placeholder
+        if len(self.queue) == 0:
+            return
+
+        # Set current index and play
+        self.queue.current_index = index
+        self.play_current_in_queue()
+
+    # ========== Auto-Advance Methods ==========
+
+    def handle_song_end(self):
+        """Handle when current song finishes - auto-advance to next."""
+        # Try to play pre-buffered next song
+        if self.player.play_next_immediate():
+            self.queue.advance()
+            current = self.queue.get_current()
+            if current:
+                title = current.song.get('title', 'Unknown')
+                artist = current.song.get('artist', 'Unknown')
+                self.root.after(0, lambda: self.current_song_var.set(f"♪ {title} - {artist}"))
+            self.update_queue_display()
+            self.start_prebuffering_next()  # Buffer the song after
+            return
+
+        # Fallback: no pre-buffer ready, play next normally
+        if self.queue.has_next():
+            self.play_next_in_queue()
+        else:
+            self.stop_music()
+            self.show_status("Queue finished", "blue")
+
+    def start_prebuffering_next(self):
+        """Download next track in background for gapless playback."""
+        if self.is_prebuffering:
+            return
+
+        next_item = self.queue.get_next()
+        if not next_item:
+            return
+
+        self.is_prebuffering = True
+
+        def prebuffer_worker():
+            try:
+                temp_path = self.api.stream_song_progressive(
+                    next_item.song['id'],
+                    ready_callback=None  # Full download, no early callback
+                )
+                if temp_path:
+                    self.player.prepare_next(temp_path, next_item.song)
+            except Exception as e:
+                print(f"Pre-buffer failed: {e}")
+            finally:
+                self.is_prebuffering = False
+
+        threading.Thread(target=prebuffer_worker, daemon=True).start()
+
+    def skip_to_next(self):
+        """Skip to next song or track group."""
+        current = self.queue.get_current()
+        if not current:
+            return
+
+        # If in a track group, skip entire group
+        if current.group_id:
+            self.queue.skip_current_group()
+        else:
+            self.queue.advance()
+
+        # Play the new current item
+        self.play_current_in_queue()
 
     def run(self):
         """Start the GUI application."""

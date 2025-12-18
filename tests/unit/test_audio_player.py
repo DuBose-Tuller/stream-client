@@ -44,6 +44,8 @@ class TestAudioPlayer:
         assert player.current_song is None
         assert player.current_file_path is None
         assert player.song_duration == 0
+        assert player.next_song_path is None
+        assert player.next_song_info is None
 
     # ========== Play Audio Tests ==========
 
@@ -502,3 +504,77 @@ class TestAudioPlayer:
         result = audio_player.seek(60.0)
 
         assert result is False
+
+    # ========== Pre-buffering Tests ==========
+
+    def test_prepare_next(self, audio_player, sample_song):
+        """Test prepare_next stores pre-buffered song info."""
+        file_path = "/tmp/next_song.mp3"
+
+        audio_player.prepare_next(file_path, sample_song)
+
+        assert audio_player.next_song_path == file_path
+        assert audio_player.next_song_info == sample_song
+
+    def test_prepare_next_overwrites_previous(self, audio_player, sample_song):
+        """Test prepare_next overwrites previously buffered song."""
+        file_path_1 = "/tmp/song1.mp3"
+        file_path_2 = "/tmp/song2.mp3"
+        song_2 = {'id': '2', 'title': 'Song 2', 'artist': 'Artist 2', 'duration': 200}
+
+        audio_player.prepare_next(file_path_1, sample_song)
+        audio_player.prepare_next(file_path_2, song_2)
+
+        assert audio_player.next_song_path == file_path_2
+        assert audio_player.next_song_info == song_2
+
+    def test_play_next_immediate_with_buffered_song(self, audio_player, mock_pygame, sample_song):
+        """Test play_next_immediate plays pre-buffered song."""
+        file_path = "/tmp/next_song.mp3"
+        audio_player.prepare_next(file_path, sample_song)
+
+        result = audio_player.play_next_immediate()
+
+        assert result is True
+        # Verify pygame.mixer.music.load was called with pre-buffered path
+        mock_pygame.mixer.music.load.assert_called_with(file_path)
+        mock_pygame.mixer.music.play.assert_called()
+        # Verify pre-buffer was cleared
+        assert audio_player.next_song_path is None
+        assert audio_player.next_song_info is None
+        # Verify player state updated
+        assert audio_player.is_playing is True
+        assert audio_player.current_song == sample_song
+
+    def test_play_next_immediate_without_buffered_song(self, audio_player, mock_pygame):
+        """Test play_next_immediate returns False when no pre-buffered song."""
+        result = audio_player.play_next_immediate()
+
+        assert result is False
+        mock_pygame.mixer.music.load.assert_not_called()
+        mock_pygame.mixer.music.play.assert_not_called()
+
+    def test_play_next_immediate_clears_buffer_on_error(self, audio_player, mock_pygame, sample_song):
+        """Test play_next_immediate clears pre-buffer even on error."""
+        file_path = "/tmp/next_song.mp3"
+        audio_player.prepare_next(file_path, sample_song)
+
+        # Make play fail
+        mock_pygame.mixer.music.load.side_effect = Exception("Load failed")
+
+        result = audio_player.play_next_immediate()
+
+        assert result is False
+        # Verify pre-buffer was cleared despite error
+        assert audio_player.next_song_path is None
+        assert audio_player.next_song_info is None
+
+    def test_play_next_immediate_partial_buffer(self, audio_player, mock_pygame, sample_song):
+        """Test play_next_immediate when only path is set (not info)."""
+        audio_player.next_song_path = "/tmp/song.mp3"
+        audio_player.next_song_info = None
+
+        result = audio_player.play_next_immediate()
+
+        assert result is False
+        mock_pygame.mixer.music.load.assert_not_called()

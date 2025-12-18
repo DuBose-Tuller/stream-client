@@ -7,9 +7,10 @@ Python clients for the enhanced music streaming server with custom metadata and 
 ### GUI Client
 
 - **`main.py`** - Entry point for the GUI application
-- **`gui_client.py`** - Main tkinter GUI application class
+- **`gui_client.py`** - Main tkinter GUI application class with queue management
 - **`api_client.py`** - HTTP API client for server communication
-- **`audio_player.py`** - pygame-based audio playback manager
+- **`audio_player.py`** - pygame-based audio playback manager with pre-buffering
+- **`playback_queue.py`** - Two-tier queue system (manual + auto items)
 - **`music_gui_client.py`** - Original monolithic GUI client (reference)
 
 ### Configuration
@@ -50,10 +51,16 @@ python main.py
 
 Full-featured desktop music client with:
 - **Search Interface**: Real-time song search with results display
-- **Playback Controls**: Play, pause, resume, stop with visual feedback
+- **Playback Queue**: Two-tier queue system (manual + auto items) with visual display
+- **Gapless Playback**: Smart pre-buffering for near-seamless track transitions (50-150ms gap)
+- **Auto-Advance**: Automatically plays next track when current finishes
+- **Playback Controls**: Play, pause, resume, stop, next with visual feedback
 - **Seeking**: Interactive progress bar with drag-to-seek functionality
 - **Position Tracking**: Real-time display of current position and total duration
 - **Volume Control**: Interactive volume slider
+- **Queue Management**: Add to queue, remove, clear all, clear auto, jump to track
+- **Track Groups**: Skip entire track groups (for multi-movement works)
+- **Playlist Support**: Create, view, delete, and play playlists
 - **Status Updates**: Connection status and playback information
 - **Modern UI**: Native macOS/Windows styling with ttk widgets
 - **Threading**: Non-blocking operations for smooth user experience
@@ -112,9 +119,13 @@ Runs comprehensive tests:
 
 ### ✅ What's Working
 - **Basic Audio Streaming**: Original test client works with all server types
-- **Desktop GUI Client**: Full tkinter-based client with search, playback, and volume control
-- **Modular Architecture**: GUI client split into reusable components (api_client, audio_player, gui_client)
-- **Gapless Playbook**: Dual-channel seamless track transitions implemented
+- **Desktop GUI Client**: Full tkinter-based client with search, playback, volume control, and queue management
+- **Modular Architecture**: GUI client split into reusable components (api_client, audio_player, gui_client, playback_queue)
+- **Queue System**: Two-tier queue (manual + auto items) with visual display and management
+- **Gapless Playback**: Smart pre-buffering for near-seamless track transitions
+- **Auto-Advance**: Automatic progression through queue
+- **Playlist Support**: Full playlist CRUD operations and playback
+- **Track Group Skipping**: Skip entire groups of related tracks
 
 ### 🚧 In Progress  
 - **Database Population**: Migration tool creates database but doesn't populate songs yet
@@ -123,11 +134,13 @@ Runs comprehensive tests:
 
 ### 📋 Next Steps
 1. Complete migration tool to populate database with music data
-2. Test all metadata features with real data  
+2. Test all metadata features with real data
 3. Implement advanced shuffle algorithms
 4. Add systemd service setup
 5. Create web client version
-6. Add GUI client features: playlists, queue management, lyrics display
+6. Add GUI client features: lyrics display, album art, advanced metadata
+7. Optimize gapless playback gap (currently 50-150ms)
+8. Add playlist editing capabilities (reorder, remove items)
 
 ## Server Setup
 
@@ -191,6 +204,7 @@ The desktop GUI client uses a modular design for maintainability:
    - Server health checking
    - Song search and artist retrieval
    - Audio streaming with timeout handling
+   - Playlist CRUD operations
    - Server playback state synchronization
 
 2. **`audio_player.py`** - Audio Playback
@@ -200,16 +214,27 @@ The desktop GUI client uses a modular design for maintainability:
    - Position tracking and duration management
    - Volume control and status tracking
    - Audio data loading from bytes or file paths
+   - Pre-buffering support for gapless playback
 
-3. **`gui_client.py`** - User Interface
+3. **`playback_queue.py`** - Queue Management
+   - Two-tier queue system (manual + auto items)
+   - Manual items: user-queued songs (play first)
+   - Auto items: from playlists/albums (play after manual)
+   - Track group support for skipping entire groups
+   - Queue operations: add, remove, clear, advance, skip
+
+4. **`gui_client.py`** - User Interface
    - tkinter/ttk-based modern GUI
    - Search interface with results display
+   - Queue display panel with management buttons
+   - Playlist management (create, view, delete, play)
    - Interactive seeking progress bar with time display
    - Real-time position updates (100ms refresh)
+   - Auto-advance with pre-buffering (triggers at 80% or 15s remaining)
    - Player controls with state management
    - Threading for non-blocking operations
 
-4. **`main.py`** - Application Entry Point
+5. **`main.py`** - Application Entry Point
    - Launches the GUI application
    - Simple, clean entry point for users
 
@@ -286,8 +311,88 @@ From TECHNICAL_LEARNINGS.md:
 - Fallback method causes brief interruption but works reliably
 - Position tracking uses 100ms update interval for smooth UI
 
+## Queue System
+
+The GUI client now features a sophisticated two-tier queue system with gapless playback:
+
+### Queue Architecture
+
+**Two Queue Types:**
+1. **Manual Queue** - Songs explicitly added by the user
+   - Appears first in the queue
+   - Persists when playing new playlists/songs
+   - Added via "Add to Queue" button
+
+2. **Auto Queue** - Songs from playlists or albums
+   - Appears after manual queue items
+   - Replaced when playing a new playlist/song
+   - Automatically populated when you hit "Play Selected"
+
+### Features
+
+- **Visual Queue Display**: Shows all upcoming tracks with current indicator (►)
+- **Queue Management**:
+  - Add to Queue - Manually queue selected search results
+  - Remove - Remove individual queue items
+  - Clear All - Clear entire queue
+  - Clear Auto - Clear only auto items, keep manual queue
+  - Jump to Track - Double-click to skip to any queue item
+
+- **Smart Ordering**: Manual items always play before auto items
+
+### Gapless Playback
+
+The queue system includes smart pre-buffering for near-gapless transitions:
+
+**How It Works:**
+1. **Pre-buffering Trigger**: When current song reaches 80% or 15 seconds remaining
+2. **Background Download**: Next track downloads in parallel (doesn't interrupt playback)
+3. **Instant Transition**: When song ends, pre-buffered track plays immediately
+4. **Expected Gap**: 50-150ms (time to stop/load/play)
+
+**Technical Details:**
+- Downloads to temp file in background thread
+- Uses pygame mixer's `play_audio_file()` for fast loading
+- Monitors playback position every 100ms
+- Automatic cleanup of temp files
+
+### Track Groups
+
+Support for multi-movement classical works or album sides:
+
+- **Skipping**: "Next" button skips entire track group (e.g., all movements of a symphony)
+- **Grouping**: Tracks with same `group_id` are treated as a unit
+- **Display**: Group information shown in queue
+
+### Usage Examples
+
+**Playing a Single Song:**
+```
+1. Search for a song
+2. Click "Play Selected" → Clears auto queue, adds song, starts playback
+3. Song auto-advances to next queued item when finished
+```
+
+**Building a Manual Queue:**
+```
+1. Search for songs
+2. Click "Add to Queue" for each song you want
+3. Manual queue persists even if you play other things
+4. Your queued songs play first
+```
+
+**Playing a Playlist:**
+```
+1. View a playlist
+2. Click "Play Playlist" → Clears auto queue, adds all playlist songs
+3. Playlist songs play after any manual queue items
+4. Gapless transitions between tracks
+```
+
 ## Next Steps
 
-1. Test seeking extensively with different audio formats
-2. Playlists/queues
-3. Display album art
+1. Test queue system with large playlists
+2. Add playlist editing (reorder items, remove tracks)
+3. Display album art in queue
+4. Optimize gapless gap (explore alternatives to pygame for <10ms gaps)
+5. Add queue persistence (save/restore across sessions)
