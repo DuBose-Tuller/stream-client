@@ -21,6 +21,9 @@ class AudioPlayer:
         self.is_paused = False
         self.current_file_path = None
         self.song_duration = 0
+        # Pre-buffering for gapless playback
+        self.next_song_path = None
+        self.next_song_info = None
     
     def play_audio_data(self, audio_data: bytes, song_info: Dict) -> bool:
         """Play audio from bytes data."""
@@ -146,4 +149,44 @@ class AudioPlayer:
 
         except Exception as e:
             print(f"Seek error: {e}")
+            return False
+
+    def prepare_next(self, file_path: str, song_info: Dict) -> None:
+        """
+        Pre-buffer next song for gapless playback.
+
+        Args:
+            file_path: Path to the pre-downloaded audio file
+            song_info: Song metadata dictionary
+        """
+        self.next_song_path = file_path
+        self.next_song_info = song_info
+
+    def play_next_immediate(self) -> bool:
+        """
+        Play the pre-buffered next song immediately.
+
+        Returns:
+            True if pre-buffered song was played, False if no pre-buffered song
+
+        Note: This is designed for near-gapless playback. The gap will be
+        the time it takes to stop current track, load new track, and start playback.
+        """
+        if not self.next_song_path or not self.next_song_info:
+            return False
+
+        try:
+            # Play the pre-buffered song
+            success = self.play_audio_file(self.next_song_path, self.next_song_info)
+
+            # Clear pre-buffer
+            self.next_song_path = None
+            self.next_song_info = None
+
+            return success
+        except Exception as e:
+            print(f"Error playing pre-buffered song: {e}")
+            # Clear pre-buffer on error
+            self.next_song_path = None
+            self.next_song_info = None
             return False
