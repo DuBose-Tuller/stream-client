@@ -46,26 +46,33 @@ class PlaybackQueue:
         """
         Add a song to the manual queue.
 
-        Manual items are added at the end of the manual section,
-        which means before any auto items.
+        Manual items are added after the currently playing song if one exists,
+        otherwise at the end of the manual section (before any auto items).
 
         Args:
             song: Song dictionary from API
         """
-        # Find the insertion point (after last manual item, before first auto item)
-        insert_index = 0
-        for i, item in enumerate(self.items):
-            if item.type == 'manual':
-                insert_index = i + 1
-            else:
-                break
-
         queue_item = QueueItem(song, item_type='manual', group_id=None)
-        self.items.insert(insert_index, queue_item)
 
-        # Adjust current_index if we inserted before it
-        if self.current_index >= insert_index:
-            self.current_index += 1
+        # If a song is currently playing, insert after it
+        if 0 <= self.current_index < len(self.items):
+            insert_index = self.current_index + 1
+            self.items.insert(insert_index, queue_item)
+            # No need to adjust current_index since we inserted after it
+        else:
+            # No current song, insert at end of manual section (before auto items)
+            insert_index = 0
+            for i, item in enumerate(self.items):
+                if item.type == 'manual':
+                    insert_index = i + 1
+                else:
+                    break
+
+            self.items.insert(insert_index, queue_item)
+
+            # Adjust current_index if we inserted before it
+            if self.current_index >= insert_index:
+                self.current_index += 1
 
     def add_auto_songs(self, songs: List[Dict], groups: Optional[List[Tuple[int, str]]] = None) -> None:
         """
@@ -192,11 +199,8 @@ class PlaybackQueue:
             next_index += 1
 
         # Set current_index to the first item outside the group
+        # If we've gone past the end, that's okay - get_current() will return None
         self.current_index = next_index
-
-        # If we went past the end, clamp to last valid index
-        if self.current_index >= len(self.items):
-            self.current_index = len(self.items) - 1
 
     def move_item(self, from_index: int, to_index: int) -> None:
         """
