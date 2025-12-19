@@ -141,6 +141,74 @@ CREATE_PLAYLIST_SUCCESS = {
     "data": "pl-new-123"
 }
 
+# Playlist detail with full song data (for playback testing)
+PLAYLIST_DETAIL_WITH_SONGS = {
+    "success": True,
+    "data": {
+        "id": "pl-1",
+        "name": "Test Playlist",
+        "description": "Test playlist with songs",
+        "items": [
+            {
+                "type": "track",
+                "song_id": "song-1",
+                "position": 0,
+                "song": {
+                    "id": "song-1",
+                    "title": "Track One",
+                    "artist": "Artist A",
+                    "album": "Album A",
+                    "duration": 180
+                }
+            },
+            {
+                "type": "track",
+                "song_id": "song-2",
+                "position": 1,
+                "song": {
+                    "id": "song-2",
+                    "title": "Track Two",
+                    "artist": "Artist B",
+                    "album": "Album B",
+                    "duration": 200
+                }
+            },
+            {
+                "type": "group",
+                "name": "Album: Best Of",
+                "position": 2,
+                "song_ids": ["song-3", "song-4"],
+                "songs": [
+                    {
+                        "id": "song-3",
+                        "title": "Track Three",
+                        "artist": "Artist C",
+                        "album": "Best Of",
+                        "duration": 220
+                    },
+                    {
+                        "id": "song-4",
+                        "title": "Track Four",
+                        "artist": "Artist C",
+                        "album": "Best Of",
+                        "duration": 240
+                    }
+                ]
+            }
+        ]
+    }
+}
+
+PLAYLIST_EMPTY = {
+    "success": True,
+    "data": {
+        "id": "pl-empty",
+        "name": "Empty Playlist",
+        "description": "",
+        "items": []
+    }
+}
+
 # Metadata responses
 METADATA_SUCCESS = {
     "success": True,

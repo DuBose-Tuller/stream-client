@@ -9,7 +9,7 @@ streaming client using tkinter and ttk widgets.
 import tkinter as tk
 from tkinter import ttk, messagebox
 import threading
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 from api_client import MusicAPIClient
 from audio_player import AudioPlayer
@@ -118,7 +118,7 @@ class MusicGUIClient:
         self.playlists_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         playlist_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-        self.playlists_listbox.bind('<Double-Button-1>', self.view_playlist)
+        self.playlists_listbox.bind('<Double-Button-1>', self.play_playlist_from_list)
 
         # Playlist action buttons
         playlist_action_frame = ttk.Frame(playlists_frame)
@@ -165,7 +165,7 @@ class MusicGUIClient:
         controls_frame = ttk.Frame(player_frame)
         controls_frame.pack(pady=(0, 10))
         
-        self.play_btn = ttk.Button(controls_frame, text="Play Selected", command=self.play_selected_song, state=tk.DISABLED)
+        self.play_btn = ttk.Button(controls_frame, text="Play", command=self.play_button_clicked, state=tk.DISABLED)
         self.play_btn.pack(side=tk.LEFT, padx=5)
         
         self.pause_btn = ttk.Button(controls_frame, text="Pause", command=self.pause_music, state=tk.DISABLED)
@@ -291,7 +291,8 @@ class MusicGUIClient:
             display_text = f"{title} - {artist} [{album}] ({duration_str})"
             self.results_listbox.insert(tk.END, display_text)
 
-        self.play_btn.configure(state=tk.NORMAL if songs else tk.DISABLED)
+        # Update button states
+        self.update_play_button_state()
         self.add_to_playlist_btn.configure(state=tk.NORMAL if songs else tk.DISABLED)
 
         # Show detailed status with counts for all result types
@@ -305,6 +306,51 @@ class MusicGUIClient:
 
         self.show_status(f"Found {', '.join(status_parts)}", "green")
     
+    def update_play_button_state(self):
+        """Update play button state based on queue, search results, and player state."""
+        has_search_results = bool(self.search_results)
+        has_queue = len(self.queue) > 0
+        is_paused = self.player.is_paused
+
+        # Enable if there's anything that can be played
+        should_enable = has_search_results or has_queue or is_paused
+        self.play_btn.configure(state=tk.NORMAL if should_enable else tk.DISABLED)
+
+    def play_button_clicked(self):
+        """
+        Generic play button handler - plays queue or selected song.
+
+        Priority:
+        1. If paused, resume playback
+        2. If queue has items and not playing, start from current position
+        3. If search result is selected, play that song
+        4. Otherwise, show message
+        """
+        # If paused, resume
+        if self.player.is_paused:
+            self.resume_music()
+            return
+
+        # If queue has items and not currently playing, play from queue
+        if len(self.queue) > 0 and not self.player.is_playing:
+            # Make sure current_index is valid
+            if not (0 <= self.queue.current_index < len(self.queue)):
+                self.queue.current_index = 0
+            self.play_current_in_queue()
+            return
+
+        # If a search result is selected, play that
+        selection = self.results_listbox.curselection()
+        if selection and self.search_results:
+            self.play_selected_song()
+            return
+
+        # Nothing to play
+        if len(self.queue) == 0:
+            self.show_status("Queue is empty - search for songs or select a playlist", "orange")
+        else:
+            self.show_status("Already playing", "blue")
+
     def play_selected_song(self, event=None):
         """Play the currently selected song, replacing auto queue items."""
         # Prevent multiple simultaneous loads
@@ -542,6 +588,9 @@ class MusicGUIClient:
             self.resume_btn.configure(state=tk.DISABLED)
             self.stop_btn.configure(state=tk.DISABLED)
             self.next_btn.configure(state=tk.DISABLED)
+
+        # Update the generic Play button state
+        self.update_play_button_state()
     
     def load_playlists(self):
         """Load all playlists from the server."""
@@ -566,7 +615,8 @@ class MusicGUIClient:
 
         for playlist in playlists:
             name = playlist.get('name', 'Unknown')
-            item_count = len(playlist.get('items', []))
+            # Use item_count from API if available, otherwise count items array
+            item_count = playlist.get('item_count', len(playlist.get('items', [])))
             self.playlists_listbox.insert(tk.END, f"{name} ({item_count} items)")
 
     def create_playlist_dialog(self):
@@ -692,8 +742,134 @@ class MusicGUIClient:
                     songs = item.get('songs', [])
                     items_listbox.insert(tk.END, f"[{group_name}] ({len(songs)} tracks)")
 
-        # Close button
-        ttk.Button(dialog, text="Close", command=dialog.destroy).pack(pady=10)
+        # Button frame at bottom
+        btn_frame = ttk.Frame(dialog)
+        btn_frame.pack(pady=10)
+
+        def play_and_close():
+            """Play playlist and close dialog."""
+            dialog.destroy()
+            self.play_playlist(playlist)
+
+        ttk.Button(btn_frame, text="Play", command=play_and_close).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="Close", command=dialog.destroy).pack(side=tk.LEFT, padx=5)
+
+    def convert_playlist_items_to_queue_format(self, playlist_items: List[Dict]) -> Tuple[List[Dict], List[Tuple[int, str]]]:
+        """
+        Convert playlist items into queue-compatible format.
+
+        Args:
+            playlist_items: List of playlist items from API (tracks and groups)
+
+        Returns:
+            Tuple of (songs_list, groups_list) where:
+            - songs_list: Flat list of all songs
+            - groups_list: List of (song_index, group_id) tuples for grouped songs
+        """
+        songs = []
+        groups = []
+
+        for item in playlist_items:
+            item_type = item.get('type', 'unknown')
+
+            if item_type == 'track':
+                # Single track - just add the song
+                song = item.get('song', {})
+                if song:  # Validate song exists
+                    songs.append(song)
+
+            elif item_type == 'group':
+                # Track group - add all songs with same group_id
+                group_songs = item.get('songs', [])
+                group_name = item.get('name', 'Unknown Group')
+
+                # Use group name + position as unique group_id
+                group_id = f"group-{item.get('position', len(songs))}-{group_name}"
+
+                start_index = len(songs)
+                for i, song in enumerate(group_songs):
+                    if song:  # Validate song exists
+                        songs.append(song)
+                        groups.append((start_index + i, group_id))
+
+        return songs, groups
+
+    def play_playlist(self, playlist: Dict):
+        """
+        Play a playlist by loading it into the queue and starting playback.
+
+        Args:
+            playlist: Full playlist dictionary from API with items
+        """
+        items = playlist.get('items', [])
+
+        # Handle empty playlist
+        if not items:
+            messagebox.showinfo("Empty Playlist",
+                              f"Playlist '{playlist.get('name', 'Unknown')}' has no items to play")
+            return
+
+        # Convert playlist items to queue format
+        songs, groups = self.convert_playlist_items_to_queue_format(items)
+
+        # Validate we got songs after conversion
+        if not songs:
+            messagebox.showwarning("Invalid Playlist",
+                                  "Playlist contains no valid songs to play")
+            return
+
+        # Clear auto items and add playlist songs
+        self.queue.clear_auto_items()
+        self.queue.add_auto_songs(songs, groups=groups if groups else None)
+
+        # Set current index to first item (prioritize manual items if they exist)
+        # Manual items are always first, so if queue has items, start at 0
+        if len(self.queue) > 0:
+            self.queue.current_index = 0
+
+        # Update UI
+        self.update_queue_display()
+
+        # Start playback immediately
+        self.play_current_in_queue()
+
+        # Update status
+        playlist_name = playlist.get('name', 'Unknown')
+        self.show_status(f"Playing playlist: {playlist_name}", "green")
+
+    def play_playlist_from_list(self, event=None):
+        """
+        Play playlist from double-click on playlist listbox.
+        Fetches full playlist and starts playback.
+        """
+        selection = self.playlists_listbox.curselection()
+        if not selection or not self.playlists:
+            return
+
+        playlist_index = selection[0]
+        if playlist_index >= len(self.playlists):
+            return
+
+        playlist_summary = self.playlists[playlist_index]
+
+        # Show loading status
+        self.show_status("Loading playlist...", "blue")
+
+        # Fetch full playlist details in background
+        def do_play():
+            try:
+                full_playlist = self.api.get_playlist(playlist_summary['id'])
+                if full_playlist:
+                    self.root.after(0, lambda: self.play_playlist(full_playlist))
+                else:
+                    self.root.after(0, lambda: messagebox.showerror("Error",
+                                                                    "Failed to load playlist"))
+                    self.root.after(0, lambda: self.show_status("Failed to load playlist", "red"))
+            except Exception as e:
+                self.root.after(0, lambda: messagebox.showerror("Error", f"Error: {str(e)}"))
+                self.root.after(0, lambda: self.show_status("Error loading playlist", "red"))
+
+        threading.Thread(target=do_play, daemon=True).start()
 
     def delete_playlist(self):
         """Delete selected playlist."""
@@ -906,6 +1082,7 @@ class MusicGUIClient:
                 artist = current.song.get('artist', 'Unknown')
                 self.root.after(0, lambda: self.current_song_var.set(f"♪ {title} - {artist}"))
             self.update_queue_display()
+            self.start_position_updates()  # Restart position updates for progress bar
             self.start_prebuffering_next()  # Buffer the song after
             return
 
@@ -954,8 +1131,13 @@ class MusicGUIClient:
         else:
             self.queue.advance()
 
-        # Play the new current item
-        self.play_current_in_queue()
+        # Play the new current item if one exists
+        if self.queue.get_current():
+            self.play_current_in_queue()
+        else:
+            # No more songs in queue
+            self.stop_music()
+            self.show_status("Queue finished", "blue")
 
     def run(self):
         """Start the GUI application."""
