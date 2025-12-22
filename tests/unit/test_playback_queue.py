@@ -345,3 +345,43 @@ class TestPlaybackQueue:
 
         # Current index should be clamped to valid range
         assert empty_queue.current_index == 0  # Last valid index
+
+    def test_add_manual_while_playing_fifo_behavior(self, empty_queue, sample_songs):
+        """Test that manual items added while playing maintain FIFO (queue) order."""
+        # Start with a playing song and some auto items
+        empty_queue.add_auto_songs([sample_songs[0], sample_songs[3], sample_songs[4]])
+        empty_queue.current_index = 0  # Song 0 is playing
+
+        # Queue manual songs A, B, C
+        empty_queue.add_manual(sample_songs[1])  # Queue A
+        empty_queue.add_manual(sample_songs[2])  # Queue B
+
+        # Expected order: [Song 0 (playing), A, B, Song 3, Song 4]
+        assert len(empty_queue) == 5
+        assert empty_queue.items[0].song['id'] == '1'  # Playing
+        assert empty_queue.items[1].song['id'] == '2'  # A (first queued)
+        assert empty_queue.items[1].type == 'manual'
+        assert empty_queue.items[2].song['id'] == '3'  # B (second queued)
+        assert empty_queue.items[2].type == 'manual'
+        assert empty_queue.items[3].song['id'] == '4'  # Auto item
+        assert empty_queue.items[3].type == 'auto'
+
+    def test_add_manual_while_playing_with_existing_manual(self, empty_queue, sample_songs):
+        """Test adding manual items when manual items already exist after current."""
+        # Current song with manual items already queued
+        empty_queue.add_manual(sample_songs[0])
+        empty_queue.add_manual(sample_songs[1])
+        empty_queue.add_auto_songs([sample_songs[4]])
+        empty_queue.current_index = 0  # Song 0 is playing
+
+        # Queue another manual song
+        empty_queue.add_manual(sample_songs[2])
+
+        # Expected: [Song 0 (playing), Song 1 (manual), Song 2 (manual, new), Song 4 (auto)]
+        assert len(empty_queue) == 4
+        assert empty_queue.items[0].song['id'] == '1'  # Playing
+        assert empty_queue.items[1].song['id'] == '2'  # First manual
+        assert empty_queue.items[2].song['id'] == '3'  # Newly added manual (at end of manual section)
+        assert empty_queue.items[2].type == 'manual'
+        assert empty_queue.items[3].song['id'] == '5'  # Auto item
+        assert empty_queue.items[3].type == 'auto'

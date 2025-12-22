@@ -46,17 +46,20 @@ class PlaybackQueue:
         """
         Add a song to the manual queue.
 
-        Manual items are added after the currently playing song if one exists,
-        otherwise at the end of the manual section (before any auto items).
+        Manual items are added at the end of manually queued songs after the current song,
+        or at the end of the manual section if nothing is playing.
 
         Args:
             song: Song dictionary from API
         """
         queue_item = QueueItem(song, item_type='manual', group_id=None)
 
-        # If a song is currently playing, insert after it
+        # If a song is currently playing, insert after all manual items following it
         if 0 <= self.current_index < len(self.items):
             insert_index = self.current_index + 1
+            # Find the end of consecutive manual items after current
+            while insert_index < len(self.items) and self.items[insert_index].type == 'manual':
+                insert_index += 1
             self.items.insert(insert_index, queue_item)
             # No need to adjust current_index since we inserted after it
         else:
