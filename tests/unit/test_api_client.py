@@ -49,10 +49,10 @@ class TestMusicAPIClient:
         result = api_client.health_check()
         assert result is False
 
+    @responses.activate
     def test_health_check_timeout(self, api_client, server_url):
         """Test health check timeout."""
-        # Don't use @responses.activate here - we want a real connection error
-        # By not mocking the request, it will fail to connect
+        # Don't add a response - this will trigger a connection error
         result = api_client.health_check()
         assert result is False
 
@@ -105,13 +105,13 @@ class TestMusicAPIClient:
 
         result = api_client.search_songs("test")
 
-        assert result == {}
+        assert result == []
 
     @responses.activate
     def test_search_songs_connection_error(self, api_client):
         """Test search with connection error."""
         result = api_client.search_songs("test")
-        assert result == {}
+        assert result == []
 
     @responses.activate
     def test_search_songs_invalid_response(self, api_client, server_url):
@@ -124,7 +124,7 @@ class TestMusicAPIClient:
         )
 
         result = api_client.search_songs("test")
-        assert result == {}
+        assert result == []
 
     @responses.activate
     def test_search_songs_missing_success_field(self, api_client, server_url):
@@ -137,7 +137,7 @@ class TestMusicAPIClient:
         )
 
         result = api_client.search_songs("test")
-        assert result == {}
+        assert result == []
 
     # ========== Search Tests (NEW FORMAT - This should catch the bug!) ==========
 
