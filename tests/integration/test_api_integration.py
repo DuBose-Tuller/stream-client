@@ -34,35 +34,33 @@ class TestAPIIntegration:
     # ========== Search Integration Tests ==========
 
     def test_search_returns_valid_response(self, api_client):
-        """Test that search returns a valid response structure.
-
-        This test will FAIL if the server returns the new SearchResponse format
-        but the client expects the old flat array format.
-        """
+        """Test that search returns a valid response structure with new SearchResponse format."""
         # Use a common search term that should return results
         result = api_client.search_songs("a")
 
-        # The result should be a LIST (not a dict)
-        assert isinstance(result, list), (
-            f"Search should return a list, got {type(result)}. "
-            f"This indicates the new API format is breaking the client!"
-        )
+        # The result should be a DICT with songs/albums/artists keys
+        assert isinstance(result, dict), f"Search should return a dict, got {type(result)}"
+        assert "songs" in result, "Search result should have 'songs' key"
+        assert "albums" in result, "Search result should have 'albums' key"
+        assert "artists" in result, "Search result should have 'artists' key"
 
     def test_search_with_common_query(self, api_client):
         """Test search with a common query."""
         result = api_client.search_songs("the")
 
-        assert isinstance(result, list)
+        assert isinstance(result, dict)
+        assert "songs" in result
         # Should return some results for common word "the"
         # (This is not guaranteed, but likely)
 
     def test_search_results_have_required_fields(self, api_client):
         """Test that search results have all required song fields."""
         result = api_client.search_songs("a")
+        songs = result.get("songs", [])
 
-        if len(result) > 0:
+        if len(songs) > 0:
             # Check first result has required fields
-            song = result[0]
+            song = songs[0]
 
             required_fields = ["id", "title", "artist"]
             for field in required_fields:
@@ -77,15 +75,16 @@ class TestAPIIntegration:
         """Test search with empty query."""
         result = api_client.search_songs("")
 
-        # Should return a list (might be empty or all songs, depends on server)
-        assert isinstance(result, list)
+        # Should return a dict (might be empty or all songs, depends on server)
+        assert isinstance(result, dict)
+        assert "songs" in result
 
     def test_search_no_results_query(self, api_client):
         """Test search with query that returns no results."""
         result = api_client.search_songs("zzzznonexistentsongxyz12345")
 
-        assert isinstance(result, list)
-        assert len(result) == 0
+        assert isinstance(result, dict)
+        assert len(result.get("songs", [])) == 0
 
     # ========== Artist Integration Tests ==========
 
@@ -112,7 +111,8 @@ class TestAPIIntegration:
         This test first searches for a song, then tries to stream it.
         """
         # First, get a valid song ID
-        songs = api_client.search_songs("a")
+        result = api_client.search_songs("a")
+        songs = result.get("songs", [])
 
         if len(songs) > 0:
             song_id = songs[0]["id"]
@@ -139,37 +139,26 @@ class TestAPIIntegration:
     def test_notify_server_play(self, api_client):
         """Test notifying server of playback."""
         # Get a real song first
-        songs = api_client.search_songs("a")
+        result = api_client.search_songs("a")
+        songs = result.get("songs", [])
 
         if len(songs) > 0:
             song = songs[0]
 
             # Notify server we're playing this song
-            result = api_client.notify_server_play(song)
+            notify_result = api_client.notify_server_play(song)
 
             # Should succeed (returns True) or at least not crash
-            assert isinstance(result, bool)
+            assert isinstance(notify_result, bool)
         else:
             pytest.skip("No songs available to test play notification")
 
     # ========== Search Format Compatibility Tests ==========
 
     def test_search_response_format_compatibility(self, api_client):
-        """Critical test: Verify search response format compatibility.
+        """Verify search response uses new SearchResponse format.
 
-        This test specifically checks for the bug where the server changed
-        from returning a flat array to a SearchResponse object.
-
-        OLD FORMAT (what current client expects):
-        {
-            "success": true,
-            "data": [
-                {"id": "1", "title": "Song 1", ...},
-                {"id": "2", "title": "Song 2", ...}
-            ]
-        }
-
-        NEW FORMAT (what breaks the client):
+        NEW FORMAT (current):
         {
             "success": true,
             "data": {
@@ -178,37 +167,25 @@ class TestAPIIntegration:
                 "artists": [...]
             }
         }
-
-        This test will FAIL if the server uses the new format but client expects old.
         """
         result = api_client.search_songs("test")
 
-        # The client's search_songs should return a list, not a dict
-        assert isinstance(result, list), (
-            f"\n\n"
-            f"🚨 SEARCH FORMAT BUG DETECTED! 🚨\n"
-            f"Expected search to return list, got {type(result)}.\n"
-            f"\n"
-            f"This means the server is returning the new SearchResponse format\n"
-            f"with {{songs: [], albums: [], artists: []}}, but the client\n"
-            f"is not handling it correctly.\n"
-            f"\n"
-            f"The api_client.py search_songs() method needs to be updated to:\n"
-            f"1. Check if data is a dict with 'songs' key\n"
-            f"2. Extract and return data['songs'] instead of data\n"
-            f"\n"
-            f"Current result type: {type(result)}\n"
-            f"Current result: {result}\n"
-        )
+        # The client's search_songs should return the full SearchResponse dict
+        assert isinstance(result, dict), f"Expected dict, got {type(result)}"
 
-        # If it's a list, verify each item is a song dict (not nested structure)
-        if len(result) > 0:
-            first_item = result[0]
-            assert isinstance(first_item, dict), "Each search result should be a dict"
-            assert "id" in first_item, "Each song should have an id"
-            assert "songs" not in first_item, (
-                "Search result items should be songs, not nested SearchResponse objects"
-            )
+        # Verify it has the new format keys
+        assert "songs" in result, "Result should have 'songs' key"
+        assert "albums" in result, "Result should have 'albums' key"
+        assert "artists" in result, "Result should have 'artists' key"
+
+        # Verify songs is a list
+        assert isinstance(result["songs"], list), "songs should be a list"
+
+        # If there are songs, verify they have the expected structure
+        if len(result["songs"]) > 0:
+            first_song = result["songs"][0]
+            assert isinstance(first_song, dict), "Each song should be a dict"
+            assert "id" in first_song, "Each song should have an id"
 
 
 class TestMetadataIntegration:
@@ -290,8 +267,9 @@ class TestEndToEndWorkflow:
         assert api_client.health_check(), "Server must be healthy"
 
         # 2. Search for songs
-        songs = api_client.search_songs("a")
-        assert isinstance(songs, list), "Search must return a list"
+        result = api_client.search_songs("a")
+        assert isinstance(result, dict), "Search must return a dict"
+        songs = result.get("songs", [])
 
         if len(songs) == 0:
             pytest.skip("No songs available for end-to-end test")

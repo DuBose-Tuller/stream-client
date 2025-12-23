@@ -27,8 +27,8 @@ class MusicAPIClient:
         except requests.RequestException:
             return False
     
-    def search_songs(self, query: str) -> List[Dict]:
-        """Search for songs. Returns list of song dictionaries."""
+    def search_songs(self, query: str) -> Dict:
+        """Search for songs, albums, and artists. Returns dict with 'songs', 'albums', 'artists' keys."""
         try:
             response = self.session.get(
                 f"{self.server_url}/api/search",
@@ -38,14 +38,10 @@ class MusicAPIClient:
             if response.status_code == 200:
                 data = response.json()
                 if data.get("success"):
-                    result = data.get("data", [])
-                    # Handle both old format (list) and new format (dict with 'songs' key)
-                    if isinstance(result, dict):
-                        return result.get("songs", [])
-                    return result
+                    return data.get("data", {"songs": [], "albums": [], "artists": []})
         except requests.RequestException as e:
             print(f"Search error: {e}")
-        return []
+        return {"songs": [], "albums": [], "artists": []}
     
     def get_artists(self) -> List[Dict]:
         """Get all artists."""
@@ -55,7 +51,7 @@ class MusicAPIClient:
                 data = response.json()
                 if data.get("success"):
                     result = data.get("data", [])
-                    # Handle both old format (list) and new format (dict with 'artists' key)
+                    # Server returns dict with 'artists' key
                     if isinstance(result, dict):
                         return result.get("artists", [])
                     return result

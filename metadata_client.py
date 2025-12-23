@@ -108,8 +108,9 @@ def run_metadata_demo():
     # Search for songs
     print("\n2. Finding songs to add metadata...")
     search_query = input("   Enter search query (or press Enter for empty search): ").strip()
-    
-    songs = client.search_songs(search_query)
+
+    search_result = client.search_songs(search_query)
+    songs = search_result.get("songs", []) if isinstance(search_result, dict) else []
     if not songs:
         print("   ❌ No songs found")
         return

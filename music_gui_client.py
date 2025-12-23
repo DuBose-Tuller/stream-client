@@ -253,13 +253,14 @@ class MusicGUIClient:
         
         def do_search():
             try:
-                results = self.api.search_songs(query)
-                if results:
-                    self.root.after(0, lambda: self.display_search_results(results))
+                search_result = self.api.search_songs(query)
+                songs = search_result.get("songs", []) if isinstance(search_result, dict) else []
+                if songs:
+                    self.root.after(0, lambda: self.display_search_results(songs))
                 else:
                     # Test if it's a connection issue by checking health
                     if not self.api.health_check():
-                        self.root.after(0, lambda: messagebox.showerror("Connection Error", 
+                        self.root.after(0, lambda: messagebox.showerror("Connection Error",
                                                                        "Cannot connect to music server.\nPlease check that the server is running."))
                         self.root.after(0, lambda: self.show_status("Server not accessible", "red"))
                     else:
@@ -268,9 +269,9 @@ class MusicGUIClient:
             except Exception as e:
                 self.root.after(0, lambda: messagebox.showerror("Search Error", f"Search failed: {str(e)}"))
                 self.root.after(0, lambda: self.show_status("Search failed", "red"))
-        
+
         threading.Thread(target=do_search, daemon=True).start()
-    
+
     def display_search_results(self, results: List[Dict]):
         """Display search results in the listbox."""
         self.search_results = results
