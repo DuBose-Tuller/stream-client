@@ -202,8 +202,8 @@ class PlaybackQueue:
             next_index += 1
 
         # Set current_index to the first item outside the group
-        # If we've gone past the end, that's okay - get_current() will return None
-        self.current_index = next_index
+        # Clamp to last valid index if group extends to end
+        self.current_index = min(next_index, len(self.items) - 1)
 
     def move_item(self, from_index: int, to_index: int) -> None:
         """
