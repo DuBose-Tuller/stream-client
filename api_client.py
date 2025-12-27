@@ -239,3 +239,22 @@ class MusicAPIClient:
         except requests.RequestException as e:
             print(f"Remove item error: {e}")
             return False
+
+    # Album artwork operations
+
+    def get_album_artwork_url(self, artist: str, album: str) -> str:
+        """Get the URL for album artwork."""
+        from urllib.parse import quote
+        return f"{self.server_url}/api/albums/artwork?artist={quote(artist)}&album={quote(album)}"
+
+    def download_album_artwork(self, artist: str, album: str) -> Optional[bytes]:
+        """Download album artwork image data. Returns bytes or None if not available."""
+        try:
+            url = self.get_album_artwork_url(artist, album)
+            response = self.session.get(url, timeout=10)
+            if response.status_code == 200:
+                return response.content
+            return None
+        except requests.RequestException as e:
+            print(f"Album artwork download error: {e}")
+            return None

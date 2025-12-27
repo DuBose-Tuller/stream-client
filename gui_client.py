@@ -9,7 +9,14 @@ streaming client using tkinter and ttk widgets.
 import tkinter as tk
 from tkinter import ttk, messagebox
 import threading
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
+from io import BytesIO
+try:
+    from PIL import Image, ImageTk
+    HAS_PIL = True
+except ImportError:
+    HAS_PIL = False
+    print("Warning: PIL not available, album artwork will not be displayed")
 
 from api_client import MusicAPIClient
 from audio_player import AudioPlayer
@@ -36,6 +43,7 @@ class MusicGUIClient:
         self.position_update_job = None
         self.is_seeking = False
         self.is_prebuffering = False
+        self.current_artwork_photo = None
         
         # Setup GUI
         self.setup_gui()
@@ -130,11 +138,20 @@ class MusicGUIClient:
         # Bottom section - Player controls (in left frame)
         player_frame = ttk.LabelFrame(left_frame, text="Player")
         player_frame.pack(fill=tk.X)
-        
-        # Current song display
+
+        # Current song display with album artwork
+        song_info_frame = ttk.Frame(player_frame)
+        song_info_frame.pack(fill=tk.X, pady=(10, 5))
+
+        # Album artwork (left side)
+        self.artwork_label = ttk.Label(song_info_frame)
+        self.artwork_label.pack(side=tk.LEFT, padx=(10, 10))
+        self.clear_artwork()
+
+        # Song info (right side)
         self.current_song_var = tk.StringVar(value="No song playing")
-        current_song_label = ttk.Label(player_frame, textvariable=self.current_song_var, font=("TkDefaultFont", 11, "bold"))
-        current_song_label.pack(pady=(10, 5))
+        current_song_label = ttk.Label(song_info_frame, textvariable=self.current_song_var, font=("TkDefaultFont", 11, "bold"))
+        current_song_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
         # Seeking controls
         seek_frame = ttk.Frame(player_frame)
@@ -420,6 +437,7 @@ class MusicGUIClient:
                             self.root.after(0, self.update_button_states)
                             self.root.after(0, self.start_position_updates)
                             self.root.after(0, self.update_queue_display)
+                            self.root.after(0, lambda: self.load_album_artwork(song))
 
                 # Stream song progressively (starts playing after 1MB buffered)
                 temp_path = self.api.stream_song_progressive(song['id'], ready_callback=ready_to_play)
@@ -437,6 +455,7 @@ class MusicGUIClient:
                         self.root.after(0, self.update_button_states)
                         self.root.after(0, self.start_position_updates)
                         self.root.after(0, self.update_queue_display)
+                        self.root.after(0, lambda: self.load_album_artwork(song))
                     else:
                         self.root.after(0, lambda: self.show_status("Failed to play song", "red"))
                 else:
@@ -479,6 +498,7 @@ class MusicGUIClient:
         self.update_button_states()
         self.stop_position_updates()
         self.reset_seek_controls()
+        self.clear_artwork()
     
     def volume_changed(self, value):
         """Handle volume slider changes."""
@@ -1081,6 +1101,7 @@ class MusicGUIClient:
                 title = current.song.get('title', 'Unknown')
                 artist = current.song.get('artist', 'Unknown')
                 self.root.after(0, lambda: self.current_song_var.set(f"♪ {title} - {artist}"))
+                self.load_album_artwork(current.song)
             self.update_queue_display()
             self.start_position_updates()  # Restart position updates for progress bar
             self.start_prebuffering_next()  # Buffer the song after
@@ -1138,6 +1159,66 @@ class MusicGUIClient:
             # No more songs in queue
             self.stop_music()
             self.show_status("Queue finished", "blue")
+
+    # ========== Album Artwork Methods ==========
+
+    def clear_artwork(self):
+        """Display placeholder when no artwork is available."""
+        if not HAS_PIL:
+            return
+
+        # Create a 100x100 gray placeholder
+        placeholder = Image.new('RGB', (100, 100), color=(200, 200, 200))
+        photo = ImageTk.PhotoImage(placeholder)
+        self.current_artwork_photo = photo
+        self.artwork_label.configure(image=photo)
+
+    def load_album_artwork(self, song: Dict):
+        """Load and display album artwork for a song."""
+        if not HAS_PIL:
+            return
+
+        artist = song.get('artist', '')
+        album = song.get('album', '')
+
+        if not artist or not album:
+            self.root.after(0, self.clear_artwork)
+            return
+
+        def download_and_display():
+            try:
+                artwork_data = self.api.download_album_artwork(artist, album)
+                if artwork_data:
+                    # Load image from bytes
+                    image = Image.open(BytesIO(artwork_data))
+
+                    # Resize to 100x100 while maintaining aspect ratio
+                    image.thumbnail((100, 100), Image.Resampling.LANCZOS)
+
+                    # Create a square canvas and center the image
+                    square_image = Image.new('RGB', (100, 100), color=(200, 200, 200))
+                    offset = ((100 - image.width) // 2, (100 - image.height) // 2)
+                    square_image.paste(image, offset)
+
+                    # Convert to PhotoImage and display
+                    photo = ImageTk.PhotoImage(square_image)
+
+                    # Update in main thread
+                    def update_display():
+                        self.current_artwork_photo = photo
+                        self.artwork_label.configure(image=photo)
+
+                    self.root.after(0, update_display)
+                else:
+                    # No artwork found, show placeholder
+                    self.root.after(0, self.clear_artwork)
+
+            except Exception as e:
+                print(f"Failed to load album artwork: {e}")
+                self.root.after(0, self.clear_artwork)
+
+        # Download artwork in background
+        threading.Thread(target=download_and_display, daemon=True).start()
 
     def run(self):
         """Start the GUI application."""
